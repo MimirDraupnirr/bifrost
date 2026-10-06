@@ -47,7 +47,7 @@ jobs:
       # Propriétaire en minuscules, jamais en dur (le compte a déjà été renommé une fois).
       - id: owner
         run: echo "lc=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ steps.owner.outputs.lc }}/bifrost
