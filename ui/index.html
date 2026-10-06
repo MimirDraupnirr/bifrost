@@ -27,6 +27,16 @@ button:disabled{opacity:.5;cursor:default}
 .list div{display:flex;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer;align-items:center}
 .list div:first-child{border-top:0}.list div:hover{background:rgba(47,93,158,.08)}.list div.sel{background:rgba(47,93,158,.16)}
 .list span.sz{margin-left:auto;color:var(--mut);font-size:12px;white-space:nowrap}
+.list.tbl div{display:grid;grid-template-columns:minmax(0,1fr) 90px 110px 140px;gap:10px;align-items:center;padding:7px 12px}
+.list.tbl div.head{position:sticky;top:0;background:var(--bg);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;cursor:default}
+.list.tbl div.head:hover{background:var(--bg)}
+.list.tbl .nm{font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list.tbl .nm small{display:block;color:var(--mut);font-family:system-ui,sans-serif;font-size:11px;overflow:hidden;text-overflow:ellipsis}
+.list.tbl .r{text-align:right;color:var(--mut);font-size:12px}
+.bdg{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
+.bdg.seed{background:#E3F1E7;color:#1F6B38}.bdg.part{background:#FDF7E7;color:#7A5A12}.bdg.dead{background:#F6E3E3;color:#9A2F2F}
+.bdg.site{background:#EEF4FC;color:#2F5D9E}.bdg.x{background:var(--line);color:var(--mut)}
+.list.tbl div.dim{opacity:.55}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chip{padding:3px 10px;border-radius:13px;font-size:12px;background:var(--line)}
 .chip.probed{background:#E3F1E7;color:#1F6B38}.chip.declared{background:#EEF4FC;color:#2F5D9E}
 .steps{display:flex;gap:6px;flex-wrap:wrap}.steps span{padding:4px 12px;border-radius:14px;background:var(--line);font-size:12px}
@@ -48,6 +58,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
     <div class="row"><label>Mot de passe<input id="lockPass" type="password" autocomplete="current-password"></label><button class="primary" id="lockBtn">Entrer</button></div>
     <div id="lockErr" class="err"></div>
   </section>
+  <div class="alert hidden" id="offline" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1"><b>Draupnirr injoignable</b><div class="mut" id="offlineMsg"></div></div><button id="retry">Réessayer</button><button id="relog">Changer de jeton</button></div>
   <div class="alert hidden" id="upd" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
     <div style="flex:1"><b id="updTitle"></b><div class="mut" id="updNotes" style="white-space:pre-line"></div></div>
     <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="autoUpd" style="width:16px;height:16px">Mises à jour automatiques</label>
@@ -111,6 +122,12 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
   <section class="card hidden" id="s2">
     <h2>Choisir les fichiers</h2>
     <div class="row"><label>Dossier<input id="path"></label><button id="go">Ouvrir</button><button id="up">↑ Parent</button><button id="fromClient">Depuis mon client</button></div>
+    <div class="row hidden" id="clientBar" style="align-items:center">
+      <label>Filtrer<input id="clientQ" placeholder="titre, année, team…"></label>
+      <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="hideOnSite" checked style="width:16px;height:16px">Masquer ceux déjà sur Draupnirr</label>
+      <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="onlyDone" checked style="width:16px;height:16px">Complets seulement</label>
+      <span class="mut" id="clientCount" style="flex:0;white-space:nowrap"></span>
+    </div>
     <div class="mut hidden" id="clientNote"></div>
     <div class="list" id="entries"></div>
     <div class="row">
@@ -162,7 +179,7 @@ const $=id=>document.getElementById(id);
 const api=async(m,u,b)=>{const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText);return j;};
 const human=n=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return n.toFixed(i?1:0).replace('.',',')+' '+u[i]};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={step:1,hash:null,job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
+const st={step:1,hash:null,clientList:[],job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
 function step(n){st.step=n;[...$('steps').children].forEach((s,i)=>{s.className=i+1<n?'done':i+1===n?'on':''});['s1','s2','s3','s4'].forEach((id,i)=>$(id).classList.toggle('hidden',i+1!==Math.min(n,4)))}
 $('gear').onclick=()=>{const open=$('s1').classList.contains('hidden');$('s1').classList.toggle('hidden',!open);if(!open&&st.step>1)['s2','s3','s4'][Math.min(st.step,4)-2]&&$(['s2','s3','s4'][Math.min(st.step,4)-2]).classList.remove('hidden')};
 
@@ -178,7 +195,10 @@ async function load(){const s=await api('GET','/ui/state');$('version').textCont
     $('lockBtn').textContent=s.needs_password?'Définir':'Entrer';
     $('lockBtn').onclick=async()=>{try{await api('POST',s.needs_password?'/ui/password':'/ui/login',{password:$('lockPass').value});location.reload()}catch(e){$('lockErr').textContent=e.message}};return}
   $('ssh_host').value=c.ssh?.host||'';$('ssh_port').value=c.ssh?.port||22;$('ssh_user').value=c.ssh?.user||'';$('ssh_key').value=c.ssh?.key_path||'';$('ssh_dir').value=c.ssh?.data_dir||'';
-  if(s.has_token&&!s.connected){try{await connect(true)}catch(e){$('s1msg').innerHTML='<span class="err">'+esc(e.message)+'</span>'}}}
+  if(s.has_token){step(2);$('me').textContent='connexion…';if(s.connected){await connected(s.me)}else{try{await connect(true)}catch(e){offline(e.message)}}}}
+function offline(msg){$('offline').classList.remove('hidden');$('offlineMsg').textContent=msg+' — le jeton enregistré n\'a pas été redemandé.';$('me').textContent='hors ligne'}
+$('retry').onclick=()=>{$('offline').classList.add('hidden');connect(true).catch(e=>offline(e.message))};
+$('relog').onclick=()=>{$('offline').classList.add('hidden');$('s1').classList.remove('hidden');$('token').focus()};
 document.querySelectorAll('input[name=src]').forEach(r=>r.onchange=async()=>{$('sshbox').classList.toggle('hidden',r.value!=='ssh');await api('POST','/ui/settings',{source:r.value});if(st.me)browse('')});
 const sshCfg=()=>({host:$('ssh_host').value.trim(),port:parseInt($('ssh_port').value)||22,user:$('ssh_user').value.trim(),key_path:$('ssh_key').value.trim(),data_dir:$('ssh_dir').value.trim()});
 function steps(list){$('sshSteps').innerHTML=list.map(x=>`<div class="${x.ok?'ok':'err'}">${x.ok?'✔':'✖'} ${esc(x.label)}${x.detail?' — '+esc(x.detail):''}</div>`).join('')}
@@ -186,11 +206,18 @@ const clCfg=()=>({type:$('cl_type').value,url:$('cl_url').value.trim(),user:$('c
 $('clTest').onclick=async()=>{$('clMsg').textContent='Connexion…';try{const r=await api('POST','/ui/client/test',clCfg());$('clMsg').innerHTML='<span class="ok">✔ '+esc(r.version)+'</span>';$('cl_pass').value=''}catch(e){$('clMsg').innerHTML='<span class="err">✖ '+esc(e.message)+'</span>'}};
 $('autoUpd').onchange=()=>api('POST','/ui/settings',{auto_update:$('autoUpd').checked});
 $('updBtn').onclick=async()=>{$('updBtn').disabled=true;try{const r=await api('POST','/ui/update');$('updTitle').textContent=r.status;setTimeout(()=>location.reload(),4000)}catch(e){$('updTitle').textContent=e.message;$('updBtn').disabled=false}};
-$('fromClient').onclick=async()=>{$('clientNote').classList.remove('hidden');$('clientNote').textContent='Lecture du client…';st.sel=null;st.hash=null;$('prepare').disabled=true;
-  try{const r=await api('GET','/ui/client/list');const list=(r.torrents||[]).sort((a,b)=>a.name.localeCompare(b.name));
-    $('clientNote').textContent=list.length+' torrent(s) dans le client'+(r.exportable?' — le .torrent d\'origine sera exporté et re-scellé, sans re-hachage.':' — ce client n\'exporte pas : les données seront re-hachées.');
-    $('entries').innerHTML=list.map((t,i)=>`<div data-i="${i}">${t.progress>=1?'✅':'⏳'} ${esc(t.name)}<span class="sz">${esc(t.state||'')} · ${human(t.size)}</span></div>`).join('')||'<div class="mut">client vide</div>';
-    [...$('entries').children].forEach(d=>d.onclick=()=>{[...$('entries').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');const t=list[d.dataset.i];st.sel=t.path;st.hash=t.hash;$('prepare').disabled=false})}
+try{$('hideOnSite').checked=localStorage.getItem('bf.hideOnSite')!=='0';$('onlyDone').checked=localStorage.getItem('bf.onlyDone')!=='0'}catch(e){}
+function badge(t){if(t.progress<1)return `<span class="bdg part">${Math.round(t.progress*100)} %</span>`;const s=(t.state||'').toLowerCase();if(/missing|error/.test(s))return '<span class="bdg dead">fichiers absents</span>';if(/pause|stopped/.test(s))return '<span class="bdg x">en pause</span>';return '<span class="bdg seed">seed</span>'}
+function renderClient(){const q=$('clientQ').value.toLowerCase().trim();const hide=$('hideOnSite').checked,done=$('onlyDone').checked;try{localStorage.setItem('bf.hideOnSite',hide?'1':'0');localStorage.setItem('bf.onlyDone',done?'1':'0')}catch(e){}
+  const all=st.clientList||[];const rows=all.filter(t=>(!hide||!t.on_draupnirr)&&(!done||t.progress>=1)&&(!q||t.name.toLowerCase().includes(q)));
+  $('clientCount').textContent=rows.length+' / '+all.length+(all.some(t=>t.on_draupnirr)?' · '+all.filter(t=>t.on_draupnirr).length+' déjà sur Draupnirr':'');
+  $('entries').className='list tbl';
+  $('entries').innerHTML='<div class="head"><span>Release</span><span class="r">Taille</span><span>État</span><span>Draupnirr</span></div>'+rows.map(t=>`<div data-h="${esc(t.hash)}" class="${t.on_draupnirr?'dim':''}"><span class="nm" title="${esc(t.path)}">${esc(t.name)}<small>${esc(t.path)}</small></span><span class="r">${human(t.size)}</span><span>${badge(t)}${t.copies>1?` <span class="bdg x" title="même données, ${t.copies} trackers">×${t.copies}</span>`:''}</span><span>${t.on_draupnirr?'<span class="bdg site">déjà dessus</span>':'<span class="mut">—</span>'}</span></div>`).join('')||'<div class="mut" style="display:block">rien à afficher avec ces filtres</div>';
+  [...$('entries').querySelectorAll('[data-h]')].forEach(d=>d.onclick=()=>{[...$('entries').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');const t=all.find(x=>x.hash===d.dataset.h);st.sel=t.path;st.hash=t.hash;$('prepare').disabled=false})}
+['clientQ','hideOnSite','onlyDone'].forEach(id=>$(id).oninput=renderClient);
+$('fromClient').onclick=async()=>{$('clientBar').classList.remove('hidden');$('clientNote').classList.remove('hidden');$('clientNote').textContent='Lecture du client…';st.sel=null;st.hash=null;$('prepare').disabled=true;
+  try{const r=await api('GET','/ui/client/list');st.clientList=(r.torrents||[]).sort((a,b)=>a.name.localeCompare(b.name));
+    $('clientNote').textContent=(r.exportable?'Le .torrent d\'origine sera exporté et re-scellé, sans re-hachage.':'Ce client n\'exporte pas : les données seront re-hachées.')+' Les cross-seeds (mêmes données) sont regroupés.';renderClient()}
   catch(e){$('clientNote').innerHTML='<span class="err">'+esc(e.message)+'</span>'}};
 $('sshSave').onclick=()=>api('POST','/ui/settings',{source:'ssh',ssh:sshCfg(),password:$('ssh_pass').value}).then(()=>steps([{ok:true,label:'Réglages enregistrés'}]),e=>steps([{ok:false,label:e.message}]));
 $('sshTest').onclick=async()=>{$('sshTest').disabled=true;steps([{ok:true,label:'Connexion en cours…'}]);$('hostkey').classList.add('hidden');
@@ -199,8 +226,8 @@ $('sshTest').onclick=async()=>{$('sshTest').disabled=true;steps([{ok:true,label:
       $('hostkeyAccept').onclick=async()=>{await api('POST','/ui/ssh/accept',{key:r.hostkey.Key});$('hostkey').classList.add('hidden');$('sshTest').click()}}
     else if(r.steps.every(x=>x.ok)){document.querySelector('input[name=src][value=ssh]').checked=true;await api('POST','/ui/settings',{source:'ssh'});if(st.me)browse('')}}
   catch(e){steps([{ok:false,label:e.message}])}finally{$('sshTest').disabled=false}};
-async function connect(silent){const r=await api('POST','/ui/connect',{site_url:$('site').value,token:silent?'':$('token').value});st.me=r.me;$('token').value='';
-  $('me').textContent=r.me.name+' · '+r.me.class+' · ratio '+(r.me.ratio??'∞');$('s1msg').innerHTML='<span class="ok">✔ Connecté : '+esc(r.me.name)+'</span>';await cats();step(2);browse('')}
+async function connected(me){st.me=me;$('me').textContent=me.name+' · '+me.class+' · ratio '+(me.ratio??'∞');$('s1msg').innerHTML='<span class="ok">✔ Connecté : '+esc(me.name)+'</span>';$('offline').classList.add('hidden');await cats();if(st.step<2)step(2);browse('').catch(()=>{})}
+async function connect(silent){const r=await api('POST','/ui/connect',{site_url:$('site').value,token:silent?'':$('token').value});$('token').value='';await connected(r.me)}
 $('connect').onclick=()=>connect(false).catch(e=>$('s1msg').innerHTML='<span class="err">'+esc(e.message)+'</span>');
 $('saveOut').onclick=()=>api('POST','/ui/settings',{out_dir:$('outdir').value}).then(()=>$('mi').insertAdjacentHTML('afterbegin','<div class="ok">✔ Dossier enregistré</div>'));
 
@@ -212,7 +239,7 @@ async function cats(){const r=await api('GET','/ui/categories');const all=(r.cat
     return `<optgroup label="${esc(root?.name||f)}">${(root?[root]:[]).concat(subs).map(c=>`<option value="${esc(c.slug)}">${esc(c.name)}${c.slug===f&&subs.length?' (toute la famille)':''}</option>`).join('')}</optgroup>`}).join('');
   const film=all.find(c=>c.slug==='films-film');if(film)$('category').value=film.slug}
 async function browse(p){const r=await api('GET','/ui/browse?path='+encodeURIComponent(p));$('path').value=r.path;$('path').dataset.parent=r.parent;st.sel=null;$('prepare').disabled=true;
-  $('clientNote').classList.add('hidden');st.hash=null;$('entries').innerHTML=r.entries.map(e=>`<div data-p="${esc(e.path)}" data-d="${e.is_dir?1:0}">${e.is_dir?'📁':'🎞'} ${esc(e.name)}<span class="sz">${human(e.size)}</span></div>`).join('')||'<div class="mut">dossier vide</div>';
+  $('clientNote').classList.add('hidden');$('clientBar').classList.add('hidden');$('entries').className='list';st.hash=null;$('entries').innerHTML=r.entries.map(e=>`<div data-p="${esc(e.path)}" data-d="${e.is_dir?1:0}">${e.is_dir?'📁':'🎞'} ${esc(e.name)}<span class="sz">${human(e.size)}</span></div>`).join('')||'<div class="mut">dossier vide</div>';
   [...$('entries').children].forEach(d=>{d.onclick=()=>{[...$('entries').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');st.sel=d.dataset.p;$('prepare').disabled=false};d.ondblclick=()=>{if(d.dataset.d==='1')browse(d.dataset.p)}})}
 $('go').onclick=()=>browse($('path').value);$('up').onclick=()=>browse($('path').dataset.parent);
 

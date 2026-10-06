@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +62,17 @@ func newServer(cfg *Config, configPath string) *server {
 	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}, sess: newSessions()}
 	sub, _ := fs.Sub(uiFS, "ui")
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
+	// Jeton déjà enregistré : on se connecte tout de suite, sans attendre la
+	// page — la connexion ne se demande qu'une fois, au premier lancement.
+	if cfg.SiteURL != "" && cfg.APIToken != "" {
+		go func() {
+			if me, err := newClient(cfg.SiteURL, cfg.APIToken).Me(context.Background()); err == nil {
+				s.mu.Lock()
+				s.me = me
+				s.mu.Unlock()
+			}
+		}()
+	}
 	s.mux.HandleFunc("GET /ui/state", s.state)
 	s.mux.HandleFunc("POST /ui/connect", s.connect)
 	s.mux.HandleFunc("POST /ui/settings", s.settings)
@@ -775,8 +787,11 @@ func (s *server) clientList(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.mu.Lock()
+	site := s.cfg.SiteURL
+	s.mu.Unlock()
 	_, exportable := tc.(*qbitClient)
-	writeJSON(w, http.StatusOK, map[string]any{"torrents": list, "exportable": exportable})
+	writeJSON(w, http.StatusOK, map[string]any{"torrents": groupCrossSeeds(list, site), "exportable": exportable})
 }
 
 func (s *server) pendingUpdate(ctx context.Context) *release {
@@ -820,4 +835,50 @@ func (s *server) doUpdate(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintln(os.Stderr, "mise à jour :", err)
 		}
 	}()
+}
+
+// clientEntry : une ligne de la liste « Depuis mon client ». Les cross-seeds
+// (même chemin de données) sont fusionnés : une release, N trackers.
+type clientEntry struct {
+	ClientTorrent
+	Copies      int  `json:"copies"`
+	OnDraupnirr bool `json:"on_draupnirr"`
+}
+
+func groupCrossSeeds(list []ClientTorrent, siteURL string) []clientEntry {
+	host := ""
+	if u, err := url.Parse(siteURL); err == nil {
+		host = strings.ToLower(u.Hostname())
+	}
+	byPath := map[string]*clientEntry{}
+	var order []string
+	for _, t := range list {
+		key := strings.TrimRight(t.Path, "/")
+		if key == "" {
+			key = t.Hash
+		}
+		onSite := false
+		for _, h := range t.Trackers {
+			if host != "" && h == host {
+				onSite = true
+			}
+		}
+		if e, ok := byPath[key]; ok {
+			e.Copies++
+			e.OnDraupnirr = e.OnDraupnirr || onSite
+			// Pour l'export, préférer une copie qui n'est PAS celle de Draupnirr
+			// (son infohash est déjà pris) et qui est complète.
+			if (e.ClientTorrent.Progress < 1 && t.Progress >= 1) || (onSite && !e.OnDraupnirr) {
+				e.ClientTorrent = t
+			}
+			continue
+		}
+		byPath[key] = &clientEntry{ClientTorrent: t, Copies: 1, OnDraupnirr: onSite}
+		order = append(order, key)
+	}
+	out := make([]clientEntry, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byPath[k])
+	}
+	return out
 }

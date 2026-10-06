@@ -35,6 +35,27 @@ type ClientTorrent struct {
 	Path     string  `json:"path"` // chemin du contenu (fichier ou dossier)
 	Progress float64 `json:"progress"`
 	State    string  `json:"state"`
+	// Hôtes des trackers : « déjà sur Draupnirr » = l'un d'eux est le site.
+	Trackers []string `json:"trackers,omitempty"`
+}
+
+// trackerHosts extrait les hôtes d'une liste d'URL d'annonce (ou d'un magnet).
+func trackerHosts(urls []string) []string {
+	var hosts []string
+	for _, raw := range urls {
+		if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Hostname() != "" {
+			hosts = append(hosts, strings.ToLower(u.Hostname()))
+		}
+	}
+	return hosts
+}
+
+func magnetTrackers(magnet string) []string {
+	u, err := url.Parse(magnet)
+	if err != nil {
+		return nil
+	}
+	return trackerHosts(u.Query()["tr"])
 }
 
 // errNoExport : le client ne sait pas rendre le .torrent d'origine ; on
@@ -152,6 +173,8 @@ func (q *qbitClient) List(ctx context.Context) ([]ClientTorrent, error) {
 		SavePath    string  `json:"save_path"`
 		Progress    float64 `json:"progress"`
 		State       string  `json:"state"`
+		Tracker     string  `json:"tracker"`
+		MagnetURI   string  `json:"magnet_uri"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
@@ -162,7 +185,11 @@ func (q *qbitClient) List(ctx context.Context) ([]ClientTorrent, error) {
 		if p == "" {
 			p = path.Join(t.SavePath, t.Name)
 		}
-		out = append(out, ClientTorrent{Hash: t.Hash, Name: t.Name, Size: t.Size, Path: p, Progress: t.Progress, State: t.State})
+		trackers := magnetTrackers(t.MagnetURI)
+		if len(trackers) == 0 && t.Tracker != "" {
+			trackers = trackerHosts([]string{t.Tracker})
+		}
+		out = append(out, ClientTorrent{Hash: t.Hash, Name: t.Name, Size: t.Size, Path: p, Progress: t.Progress, State: t.State, Trackers: trackers})
 	}
 	return out, nil
 }
@@ -285,15 +312,22 @@ func (t *transmissionClient) List(ctx context.Context) ([]ClientTorrent, error) 
 			DownloadDir string  `json:"downloadDir"`
 			PercentDone float64 `json:"percentDone"`
 			Status      int     `json:"status"`
+			Trackers    []struct {
+				Announce string `json:"announce"`
+			} `json:"trackers"`
 		} `json:"torrents"`
 	}
-	if err := t.call(ctx, "torrent-get", map[string]any{"fields": []string{"hashString", "name", "totalSize", "downloadDir", "percentDone", "status"}}, &out); err != nil {
+	if err := t.call(ctx, "torrent-get", map[string]any{"fields": []string{"hashString", "name", "totalSize", "downloadDir", "percentDone", "status", "trackers"}}, &out); err != nil {
 		return nil, err
 	}
 	states := map[int]string{0: "stopped", 4: "downloading", 6: "seeding"}
 	res := make([]ClientTorrent, 0, len(out.Torrents))
 	for _, x := range out.Torrents {
-		res = append(res, ClientTorrent{Hash: x.Hash, Name: x.Name, Size: x.Size, Path: path.Join(x.DownloadDir, x.Name), Progress: x.PercentDone, State: states[x.Status]})
+		var urls []string
+		for _, tr := range x.Trackers {
+			urls = append(urls, tr.Announce)
+		}
+		res = append(res, ClientTorrent{Hash: x.Hash, Name: x.Name, Size: x.Size, Path: path.Join(x.DownloadDir, x.Name), Progress: x.PercentDone, State: states[x.Status], Trackers: trackerHosts(urls)})
 	}
 	return res, nil
 }
@@ -387,13 +421,18 @@ func (d *delugeClient) List(ctx context.Context) ([]ClientTorrent, error) {
 		SavePath string  `json:"save_path"`
 		Progress float64 `json:"progress"`
 		State    string  `json:"state"`
+		Host     string  `json:"tracker_host"`
 	}
-	if err := d.call(ctx, "core.get_torrents_status", []any{map[string]any{}, []string{"name", "total_size", "save_path", "progress", "state"}}, &raw); err != nil {
+	if err := d.call(ctx, "core.get_torrents_status", []any{map[string]any{}, []string{"name", "total_size", "save_path", "progress", "state", "tracker_host"}}, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]ClientTorrent, 0, len(raw))
 	for hash, t := range raw {
-		out = append(out, ClientTorrent{Hash: hash, Name: t.Name, Size: t.Size, Path: path.Join(t.SavePath, t.Name), Progress: t.Progress / 100, State: strings.ToLower(t.State)})
+		var trackers []string
+		if t.Host != "" {
+			trackers = []string{strings.ToLower(t.Host)}
+		}
+		out = append(out, ClientTorrent{Hash: hash, Name: t.Name, Size: t.Size, Path: path.Join(t.SavePath, t.Name), Progress: t.Progress / 100, State: strings.ToLower(t.State), Trackers: trackers})
 	}
 	return out, nil
 }
