@@ -288,8 +288,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		examined++
 		if j.Max > 0 && j.Published >= j.Max {
 			s.mu.Lock()
-			r.Status, r.Detail = "à revoir", "plafond du lot atteint"
-			j.Review++
+			r.Detail = "plafond du lot atteint, non traité"
 			s.mu.Unlock()
 			continue
 		}
