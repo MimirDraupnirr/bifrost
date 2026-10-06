@@ -154,8 +154,8 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(res.Body, limit))
 }
 
-// verifyChecksums : signature ed25519 de checksums.txt, puis SHA-256 de l'asset.
-func verifyChecksums(pubKeyB64 string, sums, sig []byte, asset string, data []byte) error {
+// verifySignature : checksums.txt est-il bien signé par la clé de ce build ?
+func verifySignature(pubKeyB64 string, sums, sig []byte) error {
 	pub, err := base64.StdEncoding.DecodeString(pubKeyB64)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
 		return errors.New("clé publique de signature invalide dans ce build")
@@ -163,6 +163,14 @@ func verifyChecksums(pubKeyB64 string, sums, sig []byte, asset string, data []by
 	rawSig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sig)))
 	if err != nil || !ed25519.Verify(ed25519.PublicKey(pub), sums, rawSig) {
 		return errors.New("signature de checksums.txt invalide : mise à jour refusée")
+	}
+	return nil
+}
+
+// verifyChecksums : signature ed25519 de checksums.txt, puis SHA-256 de l'asset.
+func verifyChecksums(pubKeyB64 string, sums, sig []byte, asset string, data []byte) error {
+	if err := verifySignature(pubKeyB64, sums, sig); err != nil {
+		return err
 	}
 	sum := sha256.Sum256(data)
 	want := hex.EncodeToString(sum[:])

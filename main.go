@@ -89,6 +89,25 @@ func agent(args []string) int {
 		return 0
 	case "keygen":
 		return keygen()
+	case "verify":
+		// bifrost agent verify checksums.txt checksums.txt.sig — contrôle
+		// qu'une release est signée par la clé de CE build (support, audit).
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent verify <checksums.txt> <checksums.txt.sig>")
+			return 2
+		}
+		sums, err1 := os.ReadFile(args[1])
+		sig, err2 := os.ReadFile(args[2])
+		if err1 != nil || err2 != nil {
+			fmt.Fprintln(os.Stderr, "fichiers illisibles")
+			return 1
+		}
+		if err := verifySignature(signingPublicKey, sums, sig); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		fmt.Println("signature valide")
+		return 0
 	case "sign":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "usage : bifrost agent sign <fichier>")
