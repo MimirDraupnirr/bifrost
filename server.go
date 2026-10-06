@@ -29,6 +29,8 @@ type server struct {
 	me     map[string]any
 	jobs   map[string]*job
 	nextID int
+	// Mot de passe SSH de la session : jamais écrit sur disque.
+	sshPassword string
 }
 
 // job : une préparation en cours (hachage, mediainfo, analyse), interrogée
@@ -55,6 +57,8 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("GET /ui/state", s.state)
 	s.mux.HandleFunc("POST /ui/connect", s.connect)
 	s.mux.HandleFunc("POST /ui/settings", s.settings)
+	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
+	s.mux.HandleFunc("POST /ui/ssh/accept", s.sshAccept)
 	s.mux.HandleFunc("GET /ui/browse", s.browse)
 	s.mux.HandleFunc("POST /ui/prepare", s.prepare)
 	s.mux.HandleFunc("GET /ui/job/{id}", s.jobStatus)
@@ -111,13 +115,14 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	cfg.APIToken = "" // jamais renvoyé à la page
 	writeJSON(w, http.StatusOK, map[string]any{
-		"version":        Version,
-		"config":         cfg,
-		"connected":      me != nil,
-		"me":             me,
-		"mediainfo":      mediaInfoAvailable(),
-		"mediainfo_hint": mediaInfoInstallHint(),
-		"has_token":      s.cfg.APIToken != "",
+		"version":          Version,
+		"config":           cfg,
+		"connected":        me != nil,
+		"me":               me,
+		"mediainfo":        mediaInfoAvailable(),
+		"mediainfo_hint":   mediaInfoInstallHint(),
+		"has_token":        s.cfg.APIToken != "",
+		"ssh_password_set": s.sshPassword != "",
 	})
 }
 
@@ -159,16 +164,101 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		OutDir string `json:"out_dir"`
+		OutDir   string     `json:"out_dir"`
+		Source   string     `json:"source"`
+		SSH      *SSHConfig `json:"ssh"`
+		Password string     `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, err)
 		return
 	}
 	s.mu.Lock()
-	if strings.TrimSpace(in.OutDir) != "" {
-		s.cfg.OutDir = strings.TrimSpace(in.OutDir)
+	s.applySettings(in.OutDir, in.Source, in.SSH, in.Password)
+	err := saveConfig(s.configPath, s.cfg)
+	s.mu.Unlock()
+	if err != nil {
+		fail(w, err)
+		return
 	}
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "1"})
+}
+
+// applySettings : à appeler sous s.mu. Un changement de source oublie le
+// dernier dossier (il appartenait à l'autre machine).
+func (s *server) applySettings(outDir, source string, sshCfg *SSHConfig, password string) {
+	if strings.TrimSpace(outDir) != "" {
+		s.cfg.OutDir = strings.TrimSpace(outDir)
+	}
+	if source == "local" || source == "ssh" {
+		if source != s.cfg.Source {
+			s.cfg.LastDir = ""
+		}
+		s.cfg.Source = source
+	}
+	if sshCfg != nil {
+		hostKey := s.cfg.SSH.HostKey
+		if sshCfg.Host != s.cfg.SSH.Host || sshCfg.Port != s.cfg.SSH.Port {
+			hostKey = "" // autre machine, autre clé d'hôte
+		}
+		s.cfg.SSH = *sshCfg
+		s.cfg.SSH.HostKey = hostKey
+	}
+	if password != "" {
+		s.sshPassword = password
+	}
+}
+
+// source : la mise en œuvre courante (ce poste ou la seedbox).
+func (s *server) source() fileSource {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg.Source == "ssh" {
+		return &remoteSource{cfg: s.cfg.SSH, password: s.sshPassword}
+	}
+	return localSource{}
+}
+
+func (s *server) sshTest(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		SSH      SSHConfig `json:"ssh"`
+		Password string    `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, err)
+		return
+	}
+	s.mu.Lock()
+	s.applySettings("", "", &in.SSH, in.Password)
+	_ = saveConfig(s.configPath, s.cfg)
+	cfg, password := s.cfg.SSH, s.sshPassword
+	s.mu.Unlock()
+
+	client, err := dialSSH(&cfg, password)
+	if err != nil {
+		var hk *hostKeyError
+		if errors.As(err, &hk) {
+			writeJSON(w, http.StatusOK, map[string]any{"steps": []testStep{{Label: "Clé d'hôte", OK: false, Detail: hk.Error()}}, "hostkey": hk})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"steps": []testStep{{Label: "Connexion SSH", OK: false, Detail: err.Error()}}})
+		return
+	}
+	defer client.Close()
+	writeJSON(w, http.StatusOK, map[string]any{"steps": deployAgent(r.Context(), client, cfg.DataDir)})
+}
+
+// sshAccept : le membre a lu l'empreinte et l'accepte (TOFU explicite).
+func (s *server) sshAccept(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Key string `json:"key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Key == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "clé d'hôte requise"})
+		return
+	}
+	s.mu.Lock()
+	s.cfg.SSH.HostKey = in.Key
 	err := saveConfig(s.configPath, s.cfg)
 	s.mu.Unlock()
 	if err != nil {
@@ -179,25 +269,39 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) browse(w http.ResponseWriter, r *http.Request) {
+	src := s.source()
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		s.mu.Lock()
 		path = s.cfg.LastDir
 		s.mu.Unlock()
 	}
-	entries, err := listDir(path)
+	if path == "" {
+		path = src.Home()
+	}
+	entries, err := src.List(r.Context(), path)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	if path == "" {
-		path, _ = os.UserHomeDir()
+	parent := filepath.Dir(path)
+	if _, remote := src.(*remoteSource); remote {
+		parent = pathDir(path)
 	}
 	s.mu.Lock()
 	s.cfg.LastDir = path
+	source := s.cfg.Source
 	_ = saveConfig(s.configPath, s.cfg)
 	s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"path": path, "parent": filepath.Dir(path), "entries": entries})
+	writeJSON(w, http.StatusOK, map[string]any{"path": path, "parent": parent, "entries": entries, "source": source})
+}
+
+func pathDir(p string) string {
+	p = strings.TrimRight(p, "/")
+	if i := strings.LastIndex(p, "/"); i > 0 {
+		return p[:i]
+	}
+	return "/"
 }
 
 // prepare : lance en arrière-plan hachage + mediainfo + première analyse.
@@ -215,6 +319,7 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	src := s.source()
 	sourceTag := "DRAUPNIRR"
 	s.mu.Lock()
 	if tag, ok := s.me["source_tag"].(string); ok && tag != "" {
@@ -227,7 +332,7 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		ctx := context.Background()
-		raw, err := makeTorrent(in.Path, sourceTag, func(done, total int64) {
+		raw, err := src.MakeTorrent(ctx, in.Path, sourceTag, func(done, total int64) {
 			s.mu.Lock()
 			j.Progress = [2]int64{done, total}
 			s.mu.Unlock()
@@ -240,11 +345,11 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 		}
 		j.raw = raw
 		j.Torrent, _ = parseTorrent(raw)
-		j.MainFile = mainFile(in.Path, j.Torrent)
+		j.MainFile = src.MainFile(in.Path, j.Torrent)
 		j.Step = "mediainfo"
 		s.mu.Unlock()
 
-		mi, merr := mediaInfo(ctx, j.MainFile)
+		mi, merr := src.MediaInfo(ctx, j.MainFile)
 		s.mu.Lock()
 		if merr != nil {
 			j.MediaErr = merr.Error()

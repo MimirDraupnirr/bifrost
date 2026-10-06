@@ -16,6 +16,9 @@ type Config struct {
 	OutDir string `json:"out_dir"`
 	// Dernier dossier parcouru, pour rouvrir la page au même endroit.
 	LastDir string `json:"last_dir,omitempty"`
+	// Source des fichiers : "local" (ce poste) ou "ssh" (seedbox, docs/23 §4).
+	Source string    `json:"source"`
+	SSH    SSHConfig `json:"ssh"`
 }
 
 func defaultConfigPath() string {
@@ -35,7 +38,7 @@ func defaultOutDir() string {
 }
 
 func loadConfig(path string) (*Config, error) {
-	cfg := &Config{OutDir: defaultOutDir()}
+	cfg := &Config{OutDir: defaultOutDir(), Source: "local"}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil
@@ -48,6 +51,9 @@ func loadConfig(path string) (*Config, error) {
 	}
 	if cfg.OutDir == "" {
 		cfg.OutDir = defaultOutDir()
+	}
+	if cfg.Source == "" {
+		cfg.Source = "local"
 	}
 	return cfg, nil
 }

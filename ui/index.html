@@ -40,7 +40,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
 </style>
 </head>
 <body>
-<header><b>Bifröst</b><small id="version"></small><span class="me" id="me"></span></header>
+<header><b>Bifröst</b><small id="version"></small><span class="me" id="me"></span><button id="gear" title="Réglages" style="height:32px;padding:0 10px;background:#2A3242;border-color:#2A3242;color:#F4F5F7">⚙ Réglages</button></header>
 <main>
   <div class="steps" id="steps"><span class="on">1 · Connexion</span><span>2 · Fichiers</span><span>3 · Œuvre et fiche</span><span>4 · Présentation</span><span>5 · Publier</span></div>
 
@@ -58,6 +58,28 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
       <button id="saveOut">Enregistrer</button>
     </div>
     <div id="mi" class="mut"></div>
+
+    <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:10px">
+      <b>Source des fichiers</b>
+      <div class="row" style="align-items:center">
+        <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="radio" name="src" value="local" style="width:16px;height:16px">Ce poste</label>
+        <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="radio" name="src" value="ssh" style="width:16px;height:16px">Seedbox par SSH</label>
+      </div>
+      <div id="sshbox" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+        <div class="grid">
+          <label>Hôte<input id="ssh_host" placeholder="sb.example.net"></label>
+          <label>Port<input id="ssh_port" value="22"></label>
+          <label>Utilisateur<input id="ssh_user"></label>
+          <label>Clé SSH (vide = ~/.ssh/id_*)<input id="ssh_key" placeholder="~/.ssh/id_ed25519"></label>
+          <label>Dossier des données<input id="ssh_dir" placeholder="/home/moi/downloads"></label>
+          <label>Mot de passe SSH (session, jamais enregistré)<input id="ssh_pass" type="password" autocomplete="off"></label>
+        </div>
+        <div class="mut">L'agent SSH et tes clés ~/.ssh sont essayés d'abord. Le mot de passe sert aussi de phrase secrète si ta clé en a une.</div>
+        <div class="row"><button class="primary" id="sshTest">Tester la connexion et poser l'agent</button><button id="sshSave">Enregistrer</button></div>
+        <div id="sshSteps"></div>
+        <div id="hostkey" class="hidden alert"><div class="warn" id="hostkeyMsg"></div><button id="hostkeyAccept" style="margin-top:8px">J'ai vérifié cette empreinte, l'accepter</button></div>
+      </div>
+    </div>
   </section>
 
   <section class="card hidden" id="s2">
@@ -113,12 +135,25 @@ const $=id=>document.getElementById(id);
 const api=async(m,u,b)=>{const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText);return j;};
 const human=n=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return n.toFixed(i?1:0).replace('.',',')+' '+u[i]};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
-function step(n){[...$('steps').children].forEach((s,i)=>{s.className=i+1<n?'done':i+1===n?'on':''});['s1','s2','s3','s4'].forEach((id,i)=>$(id).classList.toggle('hidden',i+1!==Math.min(n,4)))}
+const st={step:1,job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
+function step(n){st.step=n;[...$('steps').children].forEach((s,i)=>{s.className=i+1<n?'done':i+1===n?'on':''});['s1','s2','s3','s4'].forEach((id,i)=>$(id).classList.toggle('hidden',i+1!==Math.min(n,4)))}
+$('gear').onclick=()=>{const open=$('s1').classList.contains('hidden');$('s1').classList.toggle('hidden',!open);if(!open&&st.step>1)['s2','s3','s4'][Math.min(st.step,4)-2]&&$(['s2','s3','s4'][Math.min(st.step,4)-2]).classList.remove('hidden')};
 
 async function load(){const s=await api('GET','/ui/state');$('version').textContent=s.version;$('site').value=s.config.site_url||'';$('outdir').value=s.config.out_dir||'';
   $('mi').innerHTML=s.mediainfo?'<span class="ok">✔ mediainfo présent</span>':'<span class="warn">⚠ mediainfo absent — installe-le : <code>'+esc(s.mediainfo_hint)+'</code>. Sans lui, les facettes sont déclarées à la main et Ratatosk les vérifie.</span>';
+  const c=s.config;document.querySelector(`input[name=src][value=${c.source||'local'}]`).checked=true;$('sshbox').classList.toggle('hidden',c.source!=='ssh');
+  $('ssh_host').value=c.ssh?.host||'';$('ssh_port').value=c.ssh?.port||22;$('ssh_user').value=c.ssh?.user||'';$('ssh_key').value=c.ssh?.key_path||'';$('ssh_dir').value=c.ssh?.data_dir||'';
   if(s.has_token&&!s.connected){try{await connect(true)}catch(e){$('s1msg').innerHTML='<span class="err">'+esc(e.message)+'</span>'}}}
+document.querySelectorAll('input[name=src]').forEach(r=>r.onchange=async()=>{$('sshbox').classList.toggle('hidden',r.value!=='ssh');await api('POST','/ui/settings',{source:r.value});if(st.me)browse('')});
+const sshCfg=()=>({host:$('ssh_host').value.trim(),port:parseInt($('ssh_port').value)||22,user:$('ssh_user').value.trim(),key_path:$('ssh_key').value.trim(),data_dir:$('ssh_dir').value.trim()});
+function steps(list){$('sshSteps').innerHTML=list.map(x=>`<div class="${x.ok?'ok':'err'}">${x.ok?'✔':'✖'} ${esc(x.label)}${x.detail?' — '+esc(x.detail):''}</div>`).join('')}
+$('sshSave').onclick=()=>api('POST','/ui/settings',{source:'ssh',ssh:sshCfg(),password:$('ssh_pass').value}).then(()=>steps([{ok:true,label:'Réglages enregistrés'}]),e=>steps([{ok:false,label:e.message}]));
+$('sshTest').onclick=async()=>{$('sshTest').disabled=true;steps([{ok:true,label:'Connexion en cours…'}]);$('hostkey').classList.add('hidden');
+  try{const r=await api('POST','/ui/ssh/test',{ssh:sshCfg(),password:$('ssh_pass').value});steps(r.steps);
+    if(r.hostkey){$('hostkeyMsg').textContent=(r.hostkey.Changed?'⚠ La clé de cet hôte a CHANGÉ. ':'Première connexion à '+r.hostkey.Host+'. ')+'Empreinte : '+r.hostkey.Fingerprint;$('hostkey').classList.remove('hidden');
+      $('hostkeyAccept').onclick=async()=>{await api('POST','/ui/ssh/accept',{key:r.hostkey.Key});$('hostkey').classList.add('hidden');$('sshTest').click()}}
+    else if(r.steps.every(x=>x.ok)){document.querySelector('input[name=src][value=ssh]').checked=true;await api('POST','/ui/settings',{source:'ssh'});if(st.me)browse('')}}
+  catch(e){steps([{ok:false,label:e.message}])}finally{$('sshTest').disabled=false}};
 async function connect(silent){const r=await api('POST','/ui/connect',{site_url:$('site').value,token:silent?'':$('token').value});st.me=r.me;$('token').value='';
   $('me').textContent=r.me.name+' · '+r.me.class+' · ratio '+(r.me.ratio??'∞');$('s1msg').innerHTML='<span class="ok">✔ Connecté : '+esc(r.me.name)+'</span>';await cats();step(2);browse('')}
 $('connect').onclick=()=>connect(false).catch(e=>$('s1msg').innerHTML='<span class="err">'+esc(e.message)+'</span>');

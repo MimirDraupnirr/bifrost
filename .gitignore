@@ -3,3 +3,4 @@
 *.torrent
 .DS_Store
 .claude/
+agent/bifrost-linux-*

@@ -1,0 +1,2 @@
+Binaires de l'agent Linux embarqués dans le binaire du poste (make agents).
+Ignorés par git : produits par le build.
