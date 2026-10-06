@@ -1,6 +1,6 @@
 # Image Bifröst (docs/23 §9.2) : en général sur la seedbox, données en volume.
 # Pas d'agent embarqué : le binaire est déjà sur la machine des données.
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
