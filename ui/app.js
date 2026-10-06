@@ -5,7 +5,6 @@ const human=n=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(n>=1024&&i<4){n/
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ico=n=>`<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const msg=(kind,text,extra='')=>`<div class="msg ${kind}">${ico(kind==='ok'?'check':kind==='err'?'x':kind==='warn'?'alert':'info')}<div>${text}${extra}</div></div>`;
-const PREVIEW_HINT='<span class="mut">Clique « Aperçu » pour voir le rendu de Draupnirr.</span>';
 const st={step:1,max:1,mode:'dir',hash:null,clientList:[],sort:{k:'name',d:1},job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:'',state:null};
 
 // ---- retours à l'écran : toasts et boutons occupés ----
@@ -133,7 +132,7 @@ function stage(step,err){const order=['hachage','mediainfo','analyse'];const i=o
   [...$('prep').querySelectorAll('.stages span')].forEach((s,k)=>{s.className=err&&k===i?'err':step==='prêt'||k<i?'done':k===i?'on':''});
   $('prog').parentElement.classList.toggle('indet',step!=='hachage'&&step!=='prêt'&&!err)}
 $('prepare').onclick=()=>run($('prepare'),async()=>{const r=await api('POST','/ui/prepare',{path:st.sel,category:$('category').value,hash:st.hash||''});st.hash=null;st.job=r.job;
-  $('prep').hidden=false;$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML=PREVIEW_HINT;$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
+  $('prep').hidden=false;$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
   await poll()});
 function poll(){return new Promise((res,rej)=>{(async function tick(){try{const j=await api('GET','/ui/job/'+st.job);const[d,t]=j.progress;
     if(j.step==='hachage'){$('prog').style.width=(t?d/t*100:0)+'%';$('prepStep').textContent=t?human(d)+' / '+human(t):(j.exported?'export depuis le client…':'')}else{$('prog').style.width='100%';$('prepStep').textContent=j.step==='mediainfo'?'Lecture des pistes…':j.step==='analyse'?'Analyse par Draupnirr…':''}
@@ -167,20 +166,60 @@ $('kind').onchange=search;
 async function images(){const r=await api('GET','/ui/tmdb-images?id='+st.picked.id+'&type='+$('kind').value+'&episode='+encodeURIComponent($('episode').value)).catch(()=>({images:[]}));st.images=r.images||[];st.captures=[];
   $('imgsNote').hidden=st.images.length>0;if(!st.images.length)$('imgsNote').textContent='Aucune image TMDB pour cette œuvre.';
   $('imgs').innerHTML=st.images.map((im,i)=>`<button type="button" data-i="${i}" title="Ajouter aux captures"><img src="${esc(im.thumb)}" alt="" loading="lazy"></button>`).join('');
-  [...$('imgs').children].forEach(im=>im.onclick=()=>{im.classList.toggle('sel');const u=st.images[im.dataset.i].url;st.captures=im.classList.contains('sel')?[...st.captures,u]:st.captures.filter(x=>x!==u)})}
+  [...$('imgs').children].forEach(im=>im.onclick=()=>{im.classList.toggle('sel');const u=st.images[im.dataset.i].url;st.captures=im.classList.contains('sel')?[...st.captures,u]:st.captures.filter(x=>x!==u);if(im.classList.contains('sel')&&st.step===3)insert(TAGS[$('format').value].img(u)[0]+'\n')})}
 
 // ---- étape 3 : présentation ----
 $('toPres').onclick=()=>run($('toPres'),async()=>{if(!st.templates.length){const c=await api('GET','/ui/presentations').catch(()=>({templates:[]}));st.templates=c.templates||[]}
   $('tpl').innerHTML='<option value="">— aucun (description libre) —</option>'+st.templates.map((t,i)=>`<option value="${i}" ${t.is_default&&(!t.family||t.family===$('category').value.split('-')[0])?'selected':''}>${esc(t.name)}${t.family?' · '+esc(t.family):''}</option>`).join('');
-  go(3);if(!$('description').value)regen()});
+  go(3);if(!$('description').value)regen();fillVars();schedulePreview()});
 function vars(){const a=st.analysis||{},n=a.nomenclature||{},f=n.facets||{},v=k=>f[k]?.value||'',m=n.media||{},fmt=$('format').value,p=st.picked||{};
   const caps=st.captures.map(u=>fmt==='html'?`<img src="${u}" alt="">`:`[img]${u}[/img]`).join('\n');
   return{titre:p.title||a.clean_title||'',annee:$('year').value,type:$('kind').value==='tv'?'Série':'Film',synopsis:p.overview||'',affiche:p.poster_url||'',tmdb_url:p.id?`https://www.themoviedb.org/${$('kind').value}/${p.id}`:'',nom_release:n.built_name||a.name||'',taille:a.size_human||'',nb_fichiers:String(a.file_count||''),fichiers:(a.files||[]).map(x=>`${x.path} (${x.size_human})`).join('\n'),episode:$('episode').value,titre_episode:$('episode_title').value,tags:(a.suggested_tags||[]).join(', '),source:v('source'),edition:v('edition'),team:v('group'),langues:v('languages'),resolution:v('resolution'),codec_video:v('video_codec'),profondeur:v('bit_depth'),hdr:v('hdr'),codec_audio:v('audio_codec'),canaux:v('channels'),duree:m.duration||'',debit:m.bitrate||'',sous_titres:m.subtitles||'',mediainfo:'',nfo:n.nfo||'',captures:caps,uploadeur:$('anonymous').checked?'Anonyme':(st.me?.name||''),date:new Date().toLocaleDateString('fr-FR')}}
 function render(body,d){let out=body;for(;;){const s=out.indexOf('{{#');if(s<0)break;const e=out.indexOf('}}',s);const name=out.slice(s+3,e);const close='{{/'+name+'}}';const c=out.indexOf(close,s);if(c<0)break;out=out.slice(0,s)+(d[name]?out.slice(e+2,c):'')+out.slice(c+close.length)}
   return out.replace(/\{\{\s*([a-z_]+)\s*\}\}/g,(m,k)=>d[k]??'').replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
-function regen(){const t=st.templates[$('tpl').value];if(!t){return}$('format').value=t.format;$('description').value=render(t.body,vars())}
+function regen(){const t=st.templates[$('tpl').value];if(!t){return}$('format').value=t.format;$('description').value=render(t.body,vars());schedulePreview()}
 $('regen').onclick=regen;$('tpl').onchange=regen;
-$('previewBtn').onclick=()=>run($('previewBtn'),async()=>{const r=await api('POST','/ui/preview',{content:$('description').value,format:$('format').value});$('preview').innerHTML=r.html});
+
+// ---- éditeur assisté : balises autour de la sélection, selon le format ----
+const TAGS={
+  bbcode:{b:['[b]','[/b]'],i:['[i]','[/i]'],u:['[u]','[/u]'],h2:['[h2]','[/h2]'],size:v=>[`[size=${v}]`,'[/size]'],color:v=>[`[color=${v}]`,'[/color]'],center:['[center]','[/center]'],quote:['[quote]','[/quote]'],list:['[list]\n[*]','\n[/list]'],item:['[*]',''],link:u=>[`[url=${u}]`,'[/url]'],img:u=>[`[img]${u||'URL'}[/img]`,''],code:['[code]','[/code]'],spoiler:['[spoiler]','[/spoiler]'],hr:['[hr]\n','']},
+  html:{b:['<b>','</b>'],i:['<i>','</i>'],u:['<u>','</u>'],h2:['<h2>','</h2>'],size:v=>[`<span style="font-size:${v}%">`,'</span>'],color:v=>[`<span style="color:${v}">`,'</span>'],center:['<center>','</center>'],quote:['<blockquote>','</blockquote>'],list:['<ul>\n<li>','</li>\n</ul>'],item:['<li>','</li>'],link:u=>[`<a href="${u}">`,'</a>'],img:u=>[`<img src="${u||'URL'}">`,''],code:['<code>','</code>'],spoiler:['<details><summary>Spoiler</summary>','</details>'],hr:['<hr>\n','']}};
+const ta=$('description');
+// wrap : entoure la sélection ; sans sélection, le curseur reste dans la balise ouverte.
+function wrap([before,after],sel){const t=ta;const s=sel?sel[0]:t.selectionStart,e=sel?sel[1]:t.selectionEnd;const mid=t.value.slice(s,e);
+  t.value=t.value.slice(0,s)+before+mid+after+t.value.slice(e);t.focus();
+  if(mid)t.setSelectionRange(s+before.length,s+before.length+mid.length);else t.setSelectionRange(s+before.length,s+before.length);schedulePreview()}
+function insert(text){wrap([text,''])}
+function cmd(k,arg){const d=TAGS[$('format').value][k];const sel=st.edSel;st.edSel=null;wrap(typeof d==='function'?d(arg):d,sel)}
+$('tb').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.cmd){cmd(b.dataset.cmd);return}
+  st.edSel=[ta.selectionStart,ta.selectionEnd];pop(b.dataset.pop)});
+ta.addEventListener('keydown',e=>{if(!(e.metaKey||e.ctrlKey))return;const k={b:'b',i:'i',u:'u'}[e.key.toLowerCase()];if(k){e.preventDefault();cmd(k)}});
+const SWATCHES=['#E04848','#E8A33D','#3FAE5C','#3E8ED0','#9B6BD6','#8A94A6'];
+function pop(kind){const p=$('pop');if(p.dataset.kind===kind&&!p.hidden){closePop();return}p.dataset.kind=kind;p.hidden=false;
+  if(kind==='color')p.innerHTML=SWATCHES.map(c=>`<button type="button" class="sw" data-v="${c}" style="background:${c}" title="${c}"></button>`).join('');
+  else if(kind==='size')p.innerHTML=[['90','Petit'],['130','Grand'],['200','Très grand']].map(([v,l])=>`<button type="button" data-v="${v}">${l}</button>`).join('');
+  else{p.innerHTML=`<input type="url" placeholder="${kind==='img'?'https://…/image.jpg':'https://…'}" autocomplete="off"><button type="button" class="primary" data-ok="1">Insérer</button>`;p.querySelector('input').focus()}}
+function closePop(){$('pop').hidden=true;$('pop').dataset.kind=''}
+$('pop').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=$('pop').dataset.kind;
+  if(b.dataset.v){cmd(k,b.dataset.v);closePop();return}
+  const u=$('pop').querySelector('input').value.trim();if(!u)return;cmd(k,u);closePop()});
+$('pop').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('pop').querySelector('[data-ok]')?.click()}if(e.key==='Escape')closePop()});
+document.addEventListener('click',e=>{if(!$('pop').hidden&&!e.target.closest('#pop')&&!e.target.closest('[data-pop]'))closePop()});
+// Palette de variables : la VALEUR rendue est insérée, le modèle reste sur le site.
+function fillVars(){const v=vars();$('varSel').innerHTML='<option value="">Insérer une variable…</option>'+Object.keys(v).map(k=>`<option value="${k}">${k} — ${esc(String(v[k]).replace(/\s+/g,' ').slice(0,40))||'(vide)'}</option>`).join('')}
+$('varSel').onchange=()=>{const k=$('varSel').value;if(k)insert(String(vars()[k]||''));$('varSel').value=''};
+['year','episode','episode_title','anonymous','format'].forEach(id=>$(id).addEventListener('change',fillVars));
+
+// ---- aperçu en temps réel : debounce 500 ms, réponse périmée ignorée ----
+let pvTimer=0,pvSeq=0;
+function schedulePreview(){clearTimeout(pvTimer);$('pvState').textContent='rendu…';pvTimer=setTimeout(renderPreview,500)}
+async function renderPreview(){const seq=++pvSeq;const content=ta.value;if(!content.trim()){$('preview').innerHTML='';$('pvState').textContent='';return}
+  try{const r=await api('POST','/ui/preview',{content,format:$('format').value});if(seq!==pvSeq)return;$('preview').innerHTML=r.html;$('pvState').textContent=''}
+  catch(e){if(seq!==pvSeq)return;$('pvState').textContent='aperçu indisponible : '+e.message}}
+ta.addEventListener('input',schedulePreview);
+$('format').addEventListener('change',schedulePreview);
+$('editor').querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{$('editor').dataset.tab=b.dataset.tab;$('editor').querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b))});
 
 // ---- étape 4 : publication ----
 $('publish').onclick=()=>run($('publish'),async()=>{
@@ -194,7 +233,7 @@ $('publish').onclick=()=>run($('publish'),async()=>{
     +(r.saved?msg('ok','.torrent personnalisé enregistré : <span class="mono">'+esc(r.saved)+'</span>'+(r.client_added?'':' — ajoute-le à ton client sur les mêmes données.')):msg('warn',esc(r.download_error||'Le .torrent personnalisé n\'a pas pu être récupéré.')));
   $('pubLink').href=r.url;go(4);});
 $('again').onclick=()=>{st.job=null;st.analysis=null;st.picked=null;st.captures=[];st.images=[];st.sel=null;st.hash=null;st.max=1;
-  $('facets').innerHTML='';$('description').value='';$('nfo').value='';$('preview').innerHTML=PREVIEW_HINT;$('imgs').innerHTML='';$('tmdb').innerHTML='';$('pub').innerHTML='';$('publish').disabled=false;$('prepare').disabled=true;
+  $('facets').innerHTML='';$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('tmdb').innerHTML='';$('pub').innerHTML='';$('publish').disabled=false;$('prepare').disabled=true;
   go(1);if(st.mode==='client')fromClient();else browse($('path').value).catch(e=>toast(e.message,'err'))};
 
 load().catch(e=>{$('connect').hidden=false;$('connectErr').textContent=e.message});
