@@ -1,0 +1,16 @@
+name: Proposition
+description: Une amélioration ou une idée
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Le problème que ça résout, description: "Ce que tu fais aujourd'hui à la main, ou ce qui bloque." }
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes: { label: Ce que tu proposes }
+  - type: dropdown
+    id: where
+    attributes:
+      label: Où ça se joue
+      options: [Bifröst (l'outil), Draupnirr (le site), Je ne sais pas]

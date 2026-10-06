@@ -109,6 +109,10 @@ Go, bibliothèque standard et `x/crypto` seulement ; page en HTML, CSS et JavaSc
 
 Conception, décisions et historique : `docs/23-BIFROST-OUTIL-UPLOAD-GO.md` du dépôt Draupnirr.
 
+## Contribuer
+
+Lis [CONTRIBUTING.md](CONTRIBUTING.md) avant d'ouvrir une PR, et [SECURITY.md](SECURITY.md) pour signaler une faille en privé. La CI vérifie `gofmt`, `go vet`, les tests, la compilation croisée et `govulncheck` ; une release est un tag `vX.Y.Z` (binaires signés + image Docker).
+
 ## Licence
 
 [MIT](LICENSE).
