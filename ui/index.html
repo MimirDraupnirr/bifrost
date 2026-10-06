@@ -61,8 +61,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
   <div class="alert hidden" id="offline" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1"><b>Draupnirr injoignable</b><div class="mut" id="offlineMsg"></div></div><button id="retry">Réessayer</button><button id="relog">Changer de jeton</button></div>
   <div class="alert hidden" id="upd" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
     <div style="flex:1"><b id="updTitle"></b><div class="mut" id="updNotes" style="white-space:pre-line"></div></div>
-    <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="autoUpd" style="width:16px;height:16px">Mises à jour automatiques</label>
-    <button class="primary" id="updBtn">Mettre à jour maintenant</button>
+    <button class="primary hidden" id="updBtn">Mettre à jour maintenant</button>
   </div>
   <div class="steps" id="steps"><span class="on">1 · Connexion</span><span>2 · Fichiers</span><span>3 · Œuvre et fiche</span><span>4 · Présentation</span><span>5 · Publier</span></div>
 
@@ -80,6 +79,7 @@ pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;
       <button id="saveOut">Enregistrer</button>
     </div>
     <div id="mi" class="mut"></div>
+    <label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="autoUpd" style="width:16px;height:16px">Mises à jour automatiques au lancement (signature vérifiée)</label>
 
     <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:10px">
       <b>Source des fichiers</b>
@@ -188,7 +188,12 @@ async function load(){const s=await api('GET','/ui/state');$('version').textCont
   const c=s.config;document.querySelector(`input[name=src][value=${c.source||'local'}]`).checked=true;$('sshbox').classList.toggle('hidden',c.source!=='ssh');
   $('cl_type').value=c.client?.type||'';$('cl_url').value=c.client?.url||'';$('cl_user').value=c.client?.user||'';$('cl_label').value=c.client?.label||'';$('cl_skip').checked=!!c.client?.skip_check;
   $('autoUpd').checked=!!s.auto_update;
-  if(s.update){$('upd').classList.remove('hidden');$('updTitle').textContent='Bifröst '+s.update.version+' est disponible (tu as '+s.version+')';$('updNotes').textContent=s.update.notes||'';if(s.in_docker){$('updBtn').textContent='En Docker : docker pull ghcr.io/mimirdraupnirr/bifrost && docker compose up -d';$('updBtn').disabled=true}}
+  if(s.update){$('upd').classList.remove('hidden');$('updTitle').textContent='Bifröst '+s.update.version+' est disponible (tu as '+s.version+')';
+    let notes=s.update.notes||'';
+    if(s.in_docker)notes+='\nEn Docker : docker pull ghcr.io/mimirdraupnirr/bifrost && docker compose up -d';
+    else if(s.auto_update)notes+='\nElle s\'installera toute seule au prochain lancement.';
+    else $('updBtn').classList.remove('hidden');
+    $('updNotes').textContent=notes.trim()}
   if(s.locked){$('lock').classList.remove('hidden');['steps','s1'].forEach(id=>$(id).classList.add('hidden'));
     $('lockTitle').textContent=s.needs_password?'Définis un mot de passe local':'Mot de passe local';
     $('lockMsg').textContent=s.needs_password?'Cette page n\'écoute pas sur 127.0.0.1 : sans mot de passe, n\'importe qui sur le réseau publierait avec ton jeton. 8 caractères minimum.':'Cette page est protégée.';
