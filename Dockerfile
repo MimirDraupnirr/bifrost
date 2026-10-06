@@ -8,7 +8,7 @@ COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -tags noagents -ldflags "-s -w -X main.Version=${VERSION}" -o /bifrost .
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache mediainfo ca-certificates tzdata \
  && adduser -D -u 1000 bifrost && mkdir -p /config /data && chown bifrost /config
 COPY --from=build /bifrost /usr/local/bin/bifrost
