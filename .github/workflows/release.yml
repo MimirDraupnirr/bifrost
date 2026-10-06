@@ -12,7 +12,7 @@ jobs:
   binaries:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
         with: { go-version: stable, check-latest: true }  # dernier correctif du Go courant : govulncheck exige les patches stdlib
@@ -36,7 +36,7 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v4
