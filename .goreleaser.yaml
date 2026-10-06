@@ -1,0 +1,32 @@
+# Une release = binaires par plateforme (agents Linux embarqués), checksums
+# signés ed25519 par le workflow, image Docker à part (voir release.yml).
+version: 2
+project_name: bifrost
+before:
+  hooks:
+    - make agents VERSION={{ .Version }}
+builds:
+  - id: bifrost
+    main: .
+    binary: bifrost
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags: ["-s -w -X main.Version=v{{ .Version }}"]
+archives:
+  - id: binaries
+    formats: [binary]
+    name_template: "bifrost_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+changelog:
+  use: git
+  filters:
+    exclude: ["^docs", "^ci"]
+release:
+  draft: false
+  prerelease: auto

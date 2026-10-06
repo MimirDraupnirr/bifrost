@@ -41,6 +41,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "config :", err)
 		os.Exit(1)
 	}
+	cleanupOldBinary()
+
+	// Mise à jour automatique AVANT de servir : rien ne tourne encore, c'est
+	// le seul moment où remplacer le binaire ne dérange personne.
+	if cfg.autoUpdate() && !inDocker() && Version != "dev" {
+		if rel, err := checkUpdate(context.Background()); err == nil && rel != nil {
+			fmt.Println("Mise à jour", Version, "→", rel.Version)
+			if err := applyUpdate(context.Background(), rel); err != nil {
+				fmt.Fprintln(os.Stderr, "mise à jour refusée :", err)
+			}
+		}
+	}
 
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
@@ -51,6 +63,10 @@ func main() {
 	fmt.Println("Bifröst", Version, "—", url)
 
 	srv := newServer(cfg, *configPath)
+	srv.requireAuth = !isLoopback(ln.Addr().String())
+	if srv.requireAuth {
+		fmt.Println("Écoute hors loopback : mot de passe local exigé (défini au premier accès).")
+	}
 	if !*noBrowser {
 		go openBrowser(url)
 	}
@@ -71,6 +87,14 @@ func agent(args []string) int {
 	case "version":
 		fmt.Println(Version)
 		return 0
+	case "keygen":
+		return keygen()
+	case "sign":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent sign <fichier>")
+			return 2
+		}
+		return sign(args[1])
 	case "ls":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "usage : bifrost agent ls <dossier>")

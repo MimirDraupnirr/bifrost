@@ -31,6 +31,12 @@ type server struct {
 	nextID int
 	// Mot de passe SSH de la session : jamais écrit sur disque.
 	sshPassword string
+	// Hors loopback : la page exige le mot de passe local (auth.go).
+	requireAuth bool
+	sess        *sessions
+	// Dernière vérification de mise à jour (24 h de cache).
+	update        *release
+	updateChecked time.Time
 }
 
 // job : une préparation en cours (hachage, mediainfo, analyse), interrogée
@@ -45,18 +51,24 @@ type job struct {
 	Torrent   *Torrent        `json:"torrent,omitempty"`
 	MainFile  string          `json:"main_file,omitempty"`
 	MediaInfo string          `json:"-"`
+	Exported  bool            `json:"exported"`
 	MediaErr  string          `json:"mediainfo_error,omitempty"`
 	Analysis  json.RawMessage `json:"analysis,omitempty"`
 	raw       []byte
 }
 
 func newServer(cfg *Config, configPath string) *server {
-	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}}
+	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}, sess: newSessions()}
 	sub, _ := fs.Sub(uiFS, "ui")
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
 	s.mux.HandleFunc("GET /ui/state", s.state)
 	s.mux.HandleFunc("POST /ui/connect", s.connect)
 	s.mux.HandleFunc("POST /ui/settings", s.settings)
+	s.mux.HandleFunc("POST /ui/login", s.login)
+	s.mux.HandleFunc("POST /ui/password", s.password)
+	s.mux.HandleFunc("POST /ui/client/test", s.clientTest)
+	s.mux.HandleFunc("GET /ui/client/list", s.clientList)
+	s.mux.HandleFunc("POST /ui/update", s.doUpdate)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
 	s.mux.HandleFunc("POST /ui/ssh/accept", s.sshAccept)
 	s.mux.HandleFunc("GET /ui/browse", s.browse)
@@ -78,6 +90,18 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" && !strings.HasSuffix(origin, "//"+r.Host) {
 		http.Error(w, "origine refusée", http.StatusForbidden)
 		return
+	}
+	// Barrière du mot de passe local : la page et son état passent (ils
+	// affichent l'écran de connexion), tout le reste exige la session.
+	if s.requireAuth && strings.HasPrefix(r.URL.Path, "/ui/") && !s.sess.valid(r) {
+		s.mu.Lock()
+		noPassword := s.cfg.UIPasswordHash == ""
+		s.mu.Unlock()
+		allowed := r.URL.Path == "/ui/state" || r.URL.Path == "/ui/login" || (noPassword && r.URL.Path == "/ui/password")
+		if !allowed {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "mot de passe local requis"})
+			return
+		}
 	}
 	s.mux.ServeHTTP(w, r)
 }
@@ -114,6 +138,13 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	me := s.me
 	s.mu.Unlock()
 	cfg.APIToken = "" // jamais renvoyé à la page
+	cfg.Client.Password = ""
+	cfg.UIPasswordHash = ""
+	locked := s.requireAuth && !s.sess.valid(r)
+	var upd *release
+	if !locked {
+		upd = s.pendingUpdate(r.Context())
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version":          Version,
 		"config":           cfg,
@@ -123,6 +154,11 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 		"mediainfo_hint":   mediaInfoInstallHint(),
 		"has_token":        s.cfg.APIToken != "",
 		"ssh_password_set": s.sshPassword != "",
+		"locked":           locked,
+		"needs_password":   s.requireAuth && s.cfg.UIPasswordHash == "",
+		"in_docker":        inDocker(),
+		"auto_update":      s.cfg.autoUpdate(),
+		"update":           upd,
 	})
 }
 
@@ -164,10 +200,12 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		OutDir   string     `json:"out_dir"`
-		Source   string     `json:"source"`
-		SSH      *SSHConfig `json:"ssh"`
-		Password string     `json:"password"`
+		OutDir     string        `json:"out_dir"`
+		Source     string        `json:"source"`
+		SSH        *SSHConfig    `json:"ssh"`
+		Password   string        `json:"password"`
+		Client     *ClientConfig `json:"client"`
+		AutoUpdate *bool         `json:"auto_update"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, err)
@@ -175,6 +213,15 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	s.applySettings(in.OutDir, in.Source, in.SSH, in.Password)
+	if in.Client != nil {
+		if in.Client.Password == "" {
+			in.Client.Password = s.cfg.Client.Password // champ vide = inchangé
+		}
+		s.cfg.Client = *in.Client
+	}
+	if in.AutoUpdate != nil {
+		s.cfg.AutoUpdate = in.AutoUpdate
+	}
 	err := saveConfig(s.configPath, s.cfg)
 	s.mu.Unlock()
 	if err != nil {
@@ -309,6 +356,7 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Path     string `json:"path"`
 		Category string `json:"category"`
+		Hash     string `json:"hash"` // torrent déjà dans le client : export sans re-hachage
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Path == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "chemin requis"})
@@ -328,15 +376,32 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 	s.nextID++
 	j := &job{ID: fmt.Sprint(s.nextID), Path: in.Path, Step: "hachage"}
 	s.jobs[j.ID] = j
+	clientCfg := s.cfg.Client
 	s.mu.Unlock()
 
 	go func() {
 		ctx := context.Background()
-		raw, err := src.MakeTorrent(ctx, in.Path, sourceTag, func(done, total int64) {
-			s.mu.Lock()
-			j.Progress = [2]int64{done, total}
-			s.mu.Unlock()
-		})
+		var raw []byte
+		var err error
+		// Exporté depuis le client puis re-scellé : pas de re-hachage. Si le
+		// client ne sait pas exporter, on hache les données comme d'habitude.
+		if in.Hash != "" {
+			if tc, cerr := newTorrentClient(clientCfg); cerr == nil && tc != nil {
+				if orig, eerr := tc.Export(ctx, in.Hash); eerr == nil {
+					raw, err = resealTorrent(orig, sourceTag)
+					s.mu.Lock()
+					j.Exported = err == nil
+					s.mu.Unlock()
+				}
+			}
+		}
+		if raw == nil {
+			raw, err = src.MakeTorrent(ctx, in.Path, sourceTag, func(done, total int64) {
+				s.mu.Lock()
+				j.Progress = [2]int64{done, total}
+				s.mu.Unlock()
+			})
+		}
 		s.mu.Lock()
 		if err != nil {
 			j.Error, j.Done = err.Error(), true
@@ -583,6 +648,25 @@ func (s *server) publish(w http.ResponseWriter, r *http.Request) {
 	if derr != nil {
 		resp["download_error"] = derr.Error()
 	}
+	// Remise au client sur les mêmes données : save_path = le dossier qui
+	// contient la release (son nom est celui du torrent).
+	s.mu.Lock()
+	clientCfg := s.cfg.Client
+	remote := s.cfg.Source == "ssh"
+	s.mu.Unlock()
+	if tc, cerr := newTorrentClient(clientCfg); cerr == nil && tc != nil && derr == nil {
+		savePath := filepath.Dir(j.Path)
+		if remote {
+			savePath = pathDir(j.Path)
+		}
+		if aerr := tc.Add(r.Context(), personalized, savePath, clientCfg.SkipCheck, clientCfg.Label); aerr != nil {
+			resp["client_error"] = aerr.Error()
+		} else {
+			resp["client_added"] = clientCfg.Type
+		}
+	} else if cerr != nil {
+		resp["client_error"] = cerr.Error()
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -593,4 +677,147 @@ func sanitize(name string) string {
 		}
 		return r
 	}, name)
+}
+
+// ---- mot de passe local, clients, mise à jour ----
+
+func (s *server) login(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Password string `json:"password"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	s.sess.throttle()
+	s.mu.Lock()
+	hash := s.cfg.UIPasswordHash
+	s.mu.Unlock()
+	if hash == "" || !checkPassword(hash, in.Password) {
+		s.sess.failed()
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "mot de passe refusé"})
+		return
+	}
+	s.sess.succeeded()
+	s.sess.issue(w)
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "1"})
+}
+
+// password : définit le mot de passe local (première fois), ou le change
+// avec l'ancien.
+func (s *server) password(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Password string `json:"password"`
+		Current  string `json:"current"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	if len(in.Password) < 8 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": errWeakPassword.Error()})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg.UIPasswordHash != "" && !checkPassword(s.cfg.UIPasswordHash, in.Current) {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "mot de passe actuel refusé"})
+		return
+	}
+	s.cfg.UIPasswordHash = hashPassword(in.Password)
+	if err := saveConfig(s.configPath, s.cfg); err != nil {
+		fail(w, err)
+		return
+	}
+	s.sess.issue(w)
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "1"})
+}
+
+func (s *server) clientTest(w http.ResponseWriter, r *http.Request) {
+	var in ClientConfig
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, err)
+		return
+	}
+	s.mu.Lock()
+	if in.Password == "" {
+		in.Password = s.cfg.Client.Password
+	}
+	s.cfg.Client = in
+	_ = saveConfig(s.configPath, s.cfg)
+	s.mu.Unlock()
+	tc, err := newTorrentClient(in)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if tc == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"version": "aucun client : les .torrent iront dans le dossier de sortie"})
+		return
+	}
+	v, err := tc.Test(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"version": v})
+}
+
+func (s *server) clientList(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	cfg := s.cfg.Client
+	s.mu.Unlock()
+	tc, err := newTorrentClient(cfg)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if tc == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "aucun client torrent configuré"})
+		return
+	}
+	list, err := tc.List(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	_, exportable := tc.(*qbitClient)
+	writeJSON(w, http.StatusOK, map[string]any{"torrents": list, "exportable": exportable})
+}
+
+func (s *server) pendingUpdate(ctx context.Context) *release {
+	s.mu.Lock()
+	fresh := time.Since(s.updateChecked) < 24*time.Hour
+	rel := s.update
+	s.mu.Unlock()
+	if fresh || Version == "dev" {
+		return rel
+	}
+	rel, _ = checkUpdate(ctx)
+	s.mu.Lock()
+	s.update, s.updateChecked = rel, time.Now()
+	s.mu.Unlock()
+	return rel
+}
+
+func (s *server) doUpdate(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	busy := false
+	for _, j := range s.jobs {
+		if !j.Done {
+			busy = true
+		}
+	}
+	s.updateChecked = time.Time{}
+	s.mu.Unlock()
+	if busy {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "une préparation est en cours : réessaie après"})
+		return
+	}
+	rel := s.pendingUpdate(r.Context())
+	if rel == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "déjà à jour"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "mise à jour vers " + rel.Version + ", redémarrage…"})
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		if err := applyUpdate(context.Background(), rel); err != nil {
+			fmt.Fprintln(os.Stderr, "mise à jour :", err)
+		}
+	}()
 }

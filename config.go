@@ -19,7 +19,15 @@ type Config struct {
 	// Source des fichiers : "local" (ce poste) ou "ssh" (seedbox, docs/23 §4).
 	Source string    `json:"source"`
 	SSH    SSHConfig `json:"ssh"`
+	// Client torrent qui seedera après publication (docs/23 §9.1).
+	Client ClientConfig `json:"client"`
+	// Mot de passe local (argon2id), exigé hors loopback (docs/23 §9.2).
+	UIPasswordHash string `json:"ui_password_hash,omitempty"`
+	// Mise à jour automatique au lancement (docs/23 §9.3) ; nil = oui.
+	AutoUpdate *bool `json:"auto_update,omitempty"`
 }
+
+func (c *Config) autoUpdate() bool { return c.AutoUpdate == nil || *c.AutoUpdate }
 
 func defaultConfigPath() string {
 	dir, err := os.UserConfigDir()

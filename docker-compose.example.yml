@@ -1,0 +1,26 @@
+# Bifröst sur la seedbox : copie ce fichier, adapte le volume des données,
+# puis `docker compose up -d`. Page sur http://<seedbox>:8790 (mot de passe
+# local demandé au premier lancement).
+services:
+  bifrost:
+    image: ghcr.io/mimirdraupnirr/bifrost:latest
+    container_name: bifrost
+    restart: unless-stopped
+    ports:
+      - "8790:8790"
+    volumes:
+      - bifrost-config:/config
+      - /home/moi/downloads:/data:ro
+    # Mise à jour automatique « à distance » : décommente Watchtower.
+    # labels:
+    #   - com.centurylinklabs.watchtower.enable=true
+
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --label-enable --interval 3600
+
+volumes:
+  bifrost-config:
