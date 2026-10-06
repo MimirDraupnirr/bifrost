@@ -17,7 +17,11 @@ const onSubmit=(form,fn)=>form.addEventListener('submit',e=>{e.preventDefault();
 function go(n){st.step=n;st.max=Math.max(st.max,n);
   [...$('rail').children].forEach((li,i)=>{const k=i+1;li.className=k<n?'done reach':k===n?'on reach':k<=st.max?'reach':'';li.firstElementChild.disabled=k>st.max});
   $('railFill').style.width=((n-1)/3*100)+'%';
-  [1,2,3,4].forEach(k=>$('p'+k).hidden=k!==n);window.scrollTo({top:0})}
+  [1,2,3,4].forEach(k=>$('p'+k).hidden=k!==n);scrollTop()}
+// Remonter en haut APRÈS le rendu du panneau : un scrollTo lancé avant que la page ait changé de hauteur était parfois ignoré.
+function scrollTop(){requestAnimationFrame(()=>{window.scrollTo({top:0,behavior:'instant'});document.documentElement.scrollTop=0;document.body.scrollTop=0})}
+// Amener un élément sous l'en-tête fixe, en douceur.
+function reveal(el,block='start'){if(!el)return;requestAnimationFrame(()=>{const y=el.getBoundingClientRect().top+window.scrollY-72;window.scrollTo({top:block==='start'?y:Math.max(0,y-window.innerHeight/3),behavior:'smooth'})})}
 $('rail').addEventListener('click',e=>{const b=e.target.closest('button');if(b&&!b.disabled)go(+b.dataset.n)});
 
 // ---- réglages (tiroir) ----
@@ -132,7 +136,7 @@ function stage(step,err){const order=['hachage','mediainfo','analyse'];const i=o
   [...$('prep').querySelectorAll('.stages span')].forEach((s,k)=>{s.className=err&&k===i?'err':step==='prêt'||k<i?'done':k===i?'on':''});
   $('prog').parentElement.classList.toggle('indet',step!=='hachage'&&step!=='prêt'&&!err)}
 $('prepare').onclick=()=>run($('prepare'),async()=>{const r=await api('POST','/ui/prepare',{path:st.sel,category:$('category').value,hash:st.hash||''});st.hash=null;st.job=r.job;
-  $('prep').hidden=false;$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
+  $('prep').hidden=false;reveal($('prep'),'center');$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
   await poll()});
 function poll(){return new Promise((res,rej)=>{(async function tick(){try{const j=await api('GET','/ui/job/'+st.job);const[d,t]=j.progress;
     if(j.step==='hachage'){$('prog').style.width=(t?d/t*100:0)+'%';$('prepStep').textContent=t?human(d)+' / '+human(t):(j.exported?'export depuis le client…':'')}else{$('prog').style.width='100%';$('prepStep').textContent=j.step==='mediainfo'?'Lecture des pistes…':j.step==='analyse'?'Analyse par Draupnirr…':''}
@@ -160,7 +164,7 @@ async function reanalyze(){$('builtBox').classList.add('loading');try{const a=aw
 async function search(){$('tmdb').innerHTML='<div class="empty">Recherche sur TMDB…</div>';
   const r=await api('GET','/ui/tmdb?q='+encodeURIComponent($('q').value)+'&type='+$('kind').value).catch(e=>({results:[],error:e.message}));
   $('tmdb').innerHTML=(r.results||[]).slice(0,6).map((x,i)=>`<button type="button" class="c ${st.picked&&st.picked.id===x.id?'sel':''}" data-i="${i}"><img src="${esc(x.poster_url||'')}" alt="" loading="lazy"><div><b>${esc(x.title)}${x.year?' <span class="mut">('+x.year+')</span>':''}</b><div class="mut">${esc(x.overview||'')}</div></div></button>`).join('')||`<div class="empty">${r.error?esc(r.error):'Aucun résultat sur TMDB — tu peux quand même remplir le titre à la main.'}</div>`;
-  [...$('tmdb').querySelectorAll('.c')].forEach(d=>d.onclick=()=>{[...$('tmdb').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');st.picked=r.results[d.dataset.i];$('work_title').value=st.picked.title;if(st.picked.year)$('year').value=st.picked.year;reanalyze();images()})}
+  [...$('tmdb').querySelectorAll('.c')].forEach(d=>d.onclick=()=>{[...$('tmdb').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');st.picked=r.results[d.dataset.i];reveal($('facets'));$('work_title').value=st.picked.title;if(st.picked.year)$('year').value=st.picked.year;reanalyze();images()})}
 onSubmit($('searchForm'),()=>run($('search'),search));
 $('kind').onchange=search;
 async function images(){const r=await api('GET','/ui/tmdb-images?id='+st.picked.id+'&type='+$('kind').value+'&episode='+encodeURIComponent($('episode').value)).catch(()=>({images:[]}));st.images=r.images||[];st.captures=[];
