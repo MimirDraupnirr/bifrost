@@ -277,7 +277,12 @@ function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').val
   batchPoll()}
 const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
 function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){return}
-  $('batchSummary').hidden=false;$('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'');
+  $('batchSummary').hidden=false;
+  const todo=rows.filter(r=>r.status!=='déjà présent'),done=todo.filter(r=>r.status!=='attente'&&r.status!=='en cours').length,cur=rows.find(r=>r.status==='en cours');
+  const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
+  $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
+  $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…':(j.done?'Terminé.':''));
+  $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'');
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
   $('batchList').innerHTML='<div class="b h"><span>Release</span><span class="r">Taille</span><span>État</span><span>Détail</span></div>'+rows.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc(r.built||r.tmdb||'')}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('')}
 async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}

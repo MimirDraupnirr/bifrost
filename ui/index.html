@@ -300,7 +300,11 @@
         <button id="batchStop" type="button" hidden><svg class="i"><use href="#i-x"/></svg>Arrêter</button>
         <button class="primary" id="batchStart" type="button"><svg class="i"><use href="#i-chevron-right"/></svg>Lancer</button>
       </div>
-      <div class="row" id="batchSummary" hidden><span class="mut" id="batchCount"></span></div>
+      <div id="batchSummary" hidden style="display:flex;flex-direction:column;gap:8px">
+        <div class="row" style="align-items:center"><span class="mut" id="batchCount"></span><span class="grow"></span><b id="batchPct"></b></div>
+        <div class="bar"><div id="batchProg" style="width:0"></div></div>
+        <div class="mut" id="batchNow"></div>
+      </div>
       <div class="list tbl" id="batchList"><div class="empty"><svg class="i"><use href="#i-folder"/></svg><span>Choisis un dossier et lance une simulation.</span></div></div>
     </section>
   </div>
