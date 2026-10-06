@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screens/fiche.jpg" alt="Bifröst — l'œuvre et la fiche technique" width="820">
+  <img src="docs/logo.svg" alt="Bifröst" width="128" height="128">
 </p>
 
 <h1 align="center">Bifröst</h1>
@@ -22,6 +22,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/screens/demo.gif" alt="Démonstration : choisir une release, laisser Draupnirr calculer la fiche, rédiger la présentation avec aperçu en direct" width="820">
+</p>
+
 ## Pourquoi
 
 Uploader proprement, c'est fastidieux : créer le `.torrent` avec le bon tag source, lancer MediaInfo, retrouver l'œuvre sur TMDB, respecter la nomenclature, rédiger une présentation, puis remettre le torrent du tracker dans son client pour seeder. Bifröst enchaîne tout ça en quatre étapes, **sans rien réinventer** : c'est Draupnirr qui calcule le nom canonique, lit les facettes dans MediaInfo et rend les avertissements de Ratatosk, exactement comme sur le site.
@@ -36,7 +40,7 @@ Uploader proprement, c'est fastidieux : créer le `.torrent` avec le bon tag sou
 | **Publication** | Envoi par l'API, récupération du `.torrent` personnalisé, ajout au client sur les mêmes données. Tu seedes tout de suite. |
 
 <p align="center">
-  <img src="docs/screens/presentation.jpg" alt="Éditeur de présentation avec aperçu en temps réel" width="820">
+  <img src="docs/screens/fiche.jpg" alt="L'œuvre et la fiche technique : facettes lues dans MediaInfo, nom publié, verdict de Ratatosk" width="820">
 </p>
 
 ## Installer
