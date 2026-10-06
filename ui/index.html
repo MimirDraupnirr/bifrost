@@ -365,6 +365,7 @@
     <section>
       <h2>Client torrent</h2>
       <p class="mut">Pour lister ce que tu seedes déjà et remettre le .torrent Draupnirr sur les mêmes données après publication. Sans client, le .torrent est gardé dans le dossier de sortie.</p>
+      <p class="mut">Le client peut être <b>sur ce PC</b> ou sur une seedbox : Bifröst lui parle par son interface Web. Sur un client de bureau, active-la d'abord — qBittorrent : Outils › Options › Interface Web (port 8080) · Transmission : Préférences › Accès distant (9091) · Deluge : plugin WebUI (8112) · rTorrent : ruTorrent. Puis « Détecter sur ce poste ».</p>
       <div class="grid">
         <label>Type<select id="cl_type"><option value="">Aucun</option><option value="qbittorrent">qBittorrent</option><option value="rtorrent">rTorrent / ruTorrent</option><option value="transmission">Transmission</option><option value="deluge">Deluge</option></select></label>
         <label>URL (ruTorrent : l'adresse de l'interface)<input id="cl_url" placeholder="https://sb.example.net/qbittorrent" autocomplete="url"></label>
@@ -373,7 +374,7 @@
         <label>Catégorie / label à poser<input id="cl_label" placeholder="draupnirr"></label>
       </div>
       <label class="switch"><input type="checkbox" id="cl_skip"><span></span>Ne pas re-vérifier les données (skip check)</label>
-      <div class="row end"><button class="primary" id="clTest" type="button">Tester le client</button></div>
+      <div class="row end"><button id="clDetect" type="button"><svg class="i"><use href="#i-search"/></svg>Détecter sur ce poste</button><button class="primary" id="clTest" type="button">Tester le client</button></div>
       <div class="status" id="clMsg"></div>
     </section>
   </div>

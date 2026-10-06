@@ -563,3 +563,49 @@ func toInt(v any) int64 {
 	}
 	return 0
 }
+
+// detectLocalClients : les clients de bureau écoutent sur des ports connus.
+// Chaque sonde exige la SIGNATURE du client (un simple « ça répond » prenait
+// n'importe quel serveur web local pour un client).
+func detectLocalClients(ctx context.Context) []ClientConfig {
+	hc := &http.Client{Timeout: 2 * time.Second}
+	get := func(u string) (*http.Response, []byte) {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		res, err := hc.Do(req)
+		if err != nil {
+			return nil, nil
+		}
+		b, _ := readBody(res)
+		return res, b
+	}
+	post := func(u, ct string, body string) (*http.Response, []byte) {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(body))
+		req.Header.Set("Content-Type", ct)
+		res, err := hc.Do(req)
+		if err != nil {
+			return nil, nil
+		}
+		b, _ := readBody(res)
+		return res, b
+	}
+	var found []ClientConfig
+	// qBittorrent : /app/version répond « v5.0.2 » (accès libre sur localhost) ou 403 « Forbidden ».
+	if res, b := get("http://127.0.0.1:8080/api/v2/app/version"); res != nil {
+		if (res.StatusCode == 200 && strings.HasPrefix(strings.TrimSpace(string(b)), "v")) || (res.StatusCode == 403 && strings.Contains(string(b), "Forbidden")) {
+			found = append(found, ClientConfig{Type: "qbittorrent", URL: "http://127.0.0.1:8080"})
+		}
+	}
+	// Transmission : 409 avec l'en-tête de session.
+	if res, _ := post("http://127.0.0.1:9091/transmission/rpc", "application/json", `{"method":"session-get"}`); res != nil && res.Header.Get("X-Transmission-Session-Id") != "" {
+		found = append(found, ClientConfig{Type: "transmission", URL: "http://127.0.0.1:9091"})
+	}
+	// Deluge : JSON-RPC qui répond au moins { "id": 1 }.
+	if res, b := post("http://127.0.0.1:8112/json", "application/json", `{"method":"auth.check_session","params":[],"id":1}`); res != nil && res.StatusCode == 200 && strings.Contains(string(b), `"id"`) && strings.Contains(string(b), `"result"`) {
+		found = append(found, ClientConfig{Type: "deluge", URL: "http://127.0.0.1:8112"})
+	}
+	// ruTorrent : XML-RPC (ou 401 si protégé).
+	if res, b := post("http://127.0.0.1/rutorrent/plugins/httprpc/action.php", "text/xml", string(xmlrpcEncode("system.client_version", nil))); res != nil && (res.StatusCode == 401 || strings.Contains(string(b), "methodResponse")) {
+		found = append(found, ClientConfig{Type: "rtorrent", URL: "http://127.0.0.1/rutorrent"})
+	}
+	return found
+}

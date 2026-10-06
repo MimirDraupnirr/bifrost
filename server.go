@@ -82,6 +82,7 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/password", s.password)
 	s.mux.HandleFunc("POST /ui/client/test", s.clientTest)
 	s.mux.HandleFunc("GET /ui/client/list", s.clientList)
+	s.mux.HandleFunc("GET /ui/client/detect", s.clientDetect)
 	s.mux.HandleFunc("POST /ui/update", s.doUpdate)
 	s.mux.HandleFunc("POST /ui/batch/start", s.batchStartHandler)
 	s.mux.HandleFunc("POST /ui/batch/stop", s.batchStopHandler)
@@ -1044,4 +1045,8 @@ func writeFileMkdir(p string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(p, data, 0o644)
+}
+
+func (s *server) clientDetect(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"clients": detectLocalClients(r.Context())})
 }

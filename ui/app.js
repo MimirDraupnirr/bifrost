@@ -81,6 +81,10 @@ $('sshTest').onclick=()=>run($('sshTest'),async()=>{sshSteps([{ok:true,label:'Co
     else if(r.steps.every(x=>x.ok)){document.querySelector('input[name=src][value=ssh]').checked=true;await api('POST','/ui/settings',{source:'ssh'});if(st.me&&st.mode==='dir')browse('')}}
   catch(e){sshSteps([{ok:false,label:e.message}])}});
 const clCfg=()=>({type:$('cl_type').value,url:$('cl_url').value.trim(),user:$('cl_user').value.trim(),password:$('cl_pass').value,label:$('cl_label').value.trim(),skip_check:$('cl_skip').checked});
+$('clDetect').onclick=()=>run($('clDetect'),async()=>{$('clMsg').className='status';$('clMsg').textContent='Sondage des ports habituels…';
+  const r=await api('GET','/ui/client/detect');const c=(r.clients||[])[0];
+  if(!c){$('clMsg').className='status err';$('clMsg').textContent='Aucun client trouvé sur ce poste. Active l\'interface Web du client (voir ci-dessus), ou saisis son adresse.';return}
+  $('cl_type').value=c.type;$('cl_url').value=c.url;$('clMsg').className='status ok';$('clMsg').textContent=`Trouvé : ${c.type} sur ${c.url}${r.clients.length>1?' (+'+(r.clients.length-1)+' autre(s))':''}. Renseigne identifiant et mot de passe, puis Tester.`});
 $('clTest').onclick=()=>run($('clTest'),async()=>{$('clMsg').className='status';$('clMsg').textContent='Connexion…';
   try{const r=await api('POST','/ui/client/test',clCfg());$('clMsg').className='status ok';$('clMsg').innerHTML=ico('check')+'<span>'+esc(r.version)+'</span>';$('cl_pass').value=''}
   catch(e){$('clMsg').className='status err';$('clMsg').innerHTML=ico('x')+'<span>'+esc(e.message)+'</span>'}});
