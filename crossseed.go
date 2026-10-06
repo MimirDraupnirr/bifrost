@@ -53,6 +53,8 @@ var reTok = regexp.MustCompile(`[^a-z0-9]+`)
 
 func tokens(name string) map[string]bool {
 	out := map[string]bool{}
+	// « Don't » et « Dont » sont le même mot dans un nom de release.
+	name = strings.NewReplacer("'", "", "’", "").Replace(name)
 	for _, t := range reTok.Split(strings.ToLower(name), -1) {
 		if len(t) > 1 {
 			out[t] = true

@@ -17,6 +17,15 @@ func TestPickWorkAndDecide(t *testing.T) {
 			} `json:"facets"`
 		}{BuiltName: "Marinette.2023.FRENCH.1080p.WEB.H265-GL0P"}}
 	results := []tmdbResult{{ID: 1, Title: "Avec Marinette", Year: float64(1999)}, {ID: 2, Title: "Marinette", Year: float64(2023)}}
+	// Titre français différent, original identique : retenu quand même.
+	a2 := &analysis{OK: true, CleanTitle: "American Fiction", Year: float64(2023)}
+	if p, _ := pickWork(a2, []tmdbResult{{ID: 9, Title: "Fiction à l'américaine", OriginalTitle: "American Fiction", Year: float64(2023)}}); p == nil || p.ID != 9 {
+		t.Fatal("le titre original doit compter")
+	}
+	a3 := &analysis{OK: true, CleanTitle: "Dont Get Out", Year: float64(2018)}
+	if p, _ := pickWork(a3, []tmdbResult{{ID: 8, Title: "Don't. Get. Out!", OriginalTitle: "Don't. Get. Out!", Year: float64(2018)}}); p == nil {
+		t.Fatal("apostrophes et ponctuation ne doivent pas compter")
+	}
 	pick, why := pickWork(a, results)
 	if pick == nil || pick.ID != 2 || why != "" {
 		t.Fatalf("choix : %+v %q", pick, why)

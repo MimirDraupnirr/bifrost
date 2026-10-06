@@ -92,11 +92,12 @@ type analysis struct {
 }
 
 type tmdbResult struct {
-	ID        int    `json:"id"`
-	Title     string `json:"title"`
-	Year      any    `json:"year"`
-	Overview  string `json:"overview"`
-	PosterURL string `json:"poster_url"`
+	ID            int    `json:"id"`
+	Title         string `json:"title"`
+	OriginalTitle string `json:"original_title"`
+	Year          any    `json:"year"`
+	Overview      string `json:"overview"`
+	PosterURL     string `json:"poster_url"`
 }
 
 func yearOf(v any) int {
@@ -125,7 +126,9 @@ func pickWork(a *analysis, results []tmdbResult) (*tmdbResult, string) {
 			break
 		}
 		dy := yearOf(r.Year) - want
-		if dy >= -1 && dy <= 1 && similarity(a.CleanTitle, r.Title) >= 0.6 {
+		// Titre français OU titre original : les noms de release portent
+		// presque toujours l'original.
+		if dy >= -1 && dy <= 1 && (similarity(a.CleanTitle, r.Title) >= 0.6 || similarity(a.CleanTitle, r.OriginalTitle) >= 0.6) {
 			return r, ""
 		}
 	}
