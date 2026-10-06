@@ -12,3 +12,8 @@ updates:
     directory: /
     schedule: { interval: weekly }
     labels: [dependances]
+    ignore:
+      # La version de Go suit go.mod, pas l'image ; les majeures d'Alpine se font à la main.
+      - dependency-name: golang
+      - dependency-name: alpine
+        update-types: [version-update:semver-major, version-update:semver-minor]
