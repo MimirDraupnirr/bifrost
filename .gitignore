@@ -1,0 +1,5 @@
+/bifrost
+/dist/
+*.torrent
+.DS_Store
+.claude/
