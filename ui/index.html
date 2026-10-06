@@ -109,6 +109,10 @@
   </section>
 
   <div id="app" hidden>
+    <div class="views"><div class="seg" role="tablist" aria-label="Vue">
+      <button type="button" class="on" id="viewUpload" role="tab"><svg class="i"><use href="#i-upload"/></svg>Uploader</button>
+      <button type="button" id="viewCross" role="tab"><svg class="i"><use href="#i-link"/></svg>Cross-seed</button>
+    </div></div>
     <nav class="bridge" aria-label="Étapes">
       <div class="span"><div class="fill" id="railFill"></div></div>
       <ol id="rail">
@@ -260,6 +264,21 @@
         <span class="grow"></span>
         <button class="primary" id="again" type="button"><svg class="i"><use href="#i-plus"/></svg>Préparer une autre release</button>
       </footer>
+    </section>
+
+    <!-- Cross-seed -->
+    <section class="panel" id="pX" hidden>
+      <header class="ph"><span class="eyebrow">Cross-seed</span><h2>Seeder sur Draupnirr ce que tu seedes déjà ailleurs</h2></header>
+      <p class="mut">Bifröst compare ton client à Draupnirr par taille exacte, puis vérifie l'arborescence sur tes données. Le <code>.torrent</code> Draupnirr est ajouté au client sur les mêmes fichiers : rien n'est téléchargé, rien n'est haché.</p>
+      <div class="row">
+        <button class="primary" id="crossScan" type="button"><svg class="i"><use href="#i-search"/></svg>Analyser mon client</button>
+        <button id="crossAll" type="button" hidden><svg class="i"><use href="#i-link"/></svg>Tout cross-seeder</button>
+        <label class="switch" id="crossOnlyWrap" hidden><input type="checkbox" id="crossOnly" checked><span></span>Correspondances seulement</label>
+        <span class="grow"></span>
+        <span class="mut" id="crossCount"></span>
+      </div>
+      <div class="list tbl" id="crossList"><div class="empty"><svg class="i"><use href="#i-link"/></svg><span>Lance l'analyse pour voir ce qui peut être cross-seedé.</span></div></div>
+      <div class="msgs" id="crossMsgs"></div>
     </section>
   </div>
 </main>

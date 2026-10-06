@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -268,23 +269,15 @@ func deployAgent(ctx context.Context, client *ssh.Client, dataDir string) []test
 		add("Agent", false, "architecture non prise en charge : "+uname[1])
 		return steps
 	}
-	out, _ = runSSH(ctx, client, agentPath+" agent version 2>/dev/null || true", nil, nil)
-	remote := strings.TrimSpace(string(out))
-	if remote == Version && Version != "dev" {
-		add("Agent", true, "déjà en place ("+remote+")")
+	pushed, detail, err := pushAgent(ctx, client, arch)
+	if err != nil {
+		add("Agent", false, err.Error())
+		return steps
+	}
+	if pushed {
+		add("Agent", true, "déployé dans ~/.bifrost ("+detail+")")
 	} else {
-		bin, err := embeddedAgent(arch)
-		if err != nil {
-			add("Agent", false, err.Error())
-			return steps
-		}
-		cmd := `mkdir -p "$HOME/.bifrost" && cat > "$HOME/.bifrost/bifrost.tmp" && chmod 755 "$HOME/.bifrost/bifrost.tmp" && mv -f "$HOME/.bifrost/bifrost.tmp" "$HOME/.bifrost/bifrost" && ` + agentPath + ` agent version`
-		out, err = runSSH(ctx, client, cmd, bytes.NewReader(bin), nil)
-		if err != nil {
-			add("Agent", false, err.Error())
-			return steps
-		}
-		add("Agent", true, fmt.Sprintf("déployé dans ~/.bifrost (%s, %.1f Mo)", strings.TrimSpace(string(out)), float64(len(bin))/1e6))
+		add("Agent", true, "déjà en place ("+detail+")")
 	}
 
 	if dataDir != "" {
@@ -302,6 +295,51 @@ func deployAgent(ctx context.Context, client *ssh.Client, dataDir string) []test
 	return steps
 }
 
+// pushAgent : compare la version de l'agent distant à celle du poste et le
+// re-copie si elle diffère. Un build « dev » est toujours re-copié : sa
+// version ne dit rien de son contenu.
+func pushAgent(ctx context.Context, client *ssh.Client, arch string) (pushed bool, detail string, err error) {
+	out, _ := runSSH(ctx, client, agentPath+" agent version 2>/dev/null || true", nil, nil)
+	remote := strings.TrimSpace(string(out))
+	if remote == Version && Version != "dev" {
+		return false, remote, nil
+	}
+	bin, err := embeddedAgent(arch)
+	if err != nil {
+		return false, "", err
+	}
+	cmd := `mkdir -p "$HOME/.bifrost" && cat > "$HOME/.bifrost/bifrost.tmp" && chmod 755 "$HOME/.bifrost/bifrost.tmp" && mv -f "$HOME/.bifrost/bifrost.tmp" "$HOME/.bifrost/bifrost" && ` + agentPath + ` agent version`
+	out, err = runSSH(ctx, client, cmd, bytes.NewReader(bin), nil)
+	if err != nil {
+		return false, "", err
+	}
+	return true, fmt.Sprintf("%s, %.1f Mo", strings.TrimSpace(string(out)), float64(len(bin))/1e6), nil
+}
+
+// ensureAgent : une fois par lancement, avant la première commande distante,
+// l'agent est aligné sur le poste. Sinon une nouvelle sous-commande (check…)
+// échouait sur une seedbox dont l'agent datait d'un test précédent.
+var agentChecked sync.Map // host → true
+
+func ensureAgent(ctx context.Context, r *remoteSource, client *ssh.Client) error {
+	if _, done := agentChecked.Load(r.cfg.Host); done {
+		return nil
+	}
+	out, err := runSSH(ctx, client, "uname -m", nil, nil)
+	if err != nil {
+		return err
+	}
+	arch := map[string]string{"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}[strings.TrimSpace(string(out))]
+	if arch == "" {
+		return errors.New("architecture de la seedbox non prise en charge : " + strings.TrimSpace(string(out)))
+	}
+	if _, _, err := pushAgent(ctx, client, arch); err != nil {
+		return err
+	}
+	agentChecked.Store(r.cfg.Host, true)
+	return nil
+}
+
 // ---- la seedbox comme source de fichiers ----
 
 type remoteSource struct {
@@ -309,7 +347,17 @@ type remoteSource struct {
 	password string
 }
 
-func (r *remoteSource) client() (*ssh.Client, error) { return dialSSH(&r.cfg, r.password) }
+func (r *remoteSource) client() (*ssh.Client, error) {
+	c, err := dialSSH(&r.cfg, r.password)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureAgent(context.Background(), r, c); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
 
 func (r *remoteSource) Home() string {
 	if r.cfg.DataDir != "" {

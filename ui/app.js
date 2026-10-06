@@ -241,3 +241,29 @@ $('again').onclick=()=>{st.job=null;st.analysis=null;st.picked=null;st.captures=
   go(1);if(st.mode==='client')fromClient();else browse($('path').value).catch(e=>toast(e.message,'err'))};
 
 load().catch(e=>{$('connect').hidden=false;$('connectErr').textContent=e.message});
+
+
+// ---- Vue Cross-seed ----
+function view(name){const cross=name==='cross';$('viewCross').classList.toggle('on',cross);$('viewUpload').classList.toggle('on',!cross);
+  document.querySelector('.bridge').hidden=cross;[1,2,3,4].forEach(k=>$('p'+k).hidden=cross||k!==st.step);$('pX').hidden=!cross;scrollTop()}
+$('viewUpload').onclick=()=>view('upload');$('viewCross').onclick=()=>view('cross');
+st.cross=[];
+function crossRow(r){const m=r.match;const key=esc(r.hash);
+  return `<div class="x ${m?'':'none'}" data-h="${key}"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc(r.path)}</small></span><span class="r">${human(r.size)}</span>`+
+    (m?`<span class="nm"><b>${esc(m.name)}</b><small>${esc(m.category||'')} · ${m.seeders??0} seeder(s) · ${Math.round((r.score||0)*100)} % de ressemblance</small></span><span><button type="button" class="primary small" data-add="${key}"><svg class="i"><use href="#i-link"/></svg>Cross-seeder</button></span>`
+      :`<span class="mut">aucune release de cette taille sur Draupnirr</span><span></span>`)+`</div>`}
+function renderCross(){const only=$('crossOnly').checked;const rows=st.cross.filter(r=>!only||r.match);const n=st.cross.filter(r=>r.match).length;
+  $('crossCount').textContent=st.cross.length?`${n} correspondance(s) sur ${st.cross.length} torrent(s) hors Draupnirr`:'';
+  $('crossAll').hidden=n===0;$('crossAll').innerHTML=`${ico('link')}Tout cross-seeder (${n})`;$('crossOnlyWrap').hidden=st.cross.length===0;
+  $('crossList').innerHTML='<div class="x h"><span>Dans ton client</span><span class="r">Taille</span><span>Sur Draupnirr</span><span></span></div>'+(rows.map(crossRow).join('')||'<div class="empty"><span>Rien à afficher.</span></div>');
+  [...$('crossList').querySelectorAll('[data-add]')].forEach(b=>b.onclick=()=>crossAdd(b.dataset.add,b))}
+async function crossAdd(hash,btn){const r=st.cross.find(x=>x.hash===hash);if(!r||!r.match)return;const row=btn.closest('.x');const cell=btn.parentElement;
+  await run(btn,async()=>{try{const res=await api('POST','/ui/crossseed/add',{path:r.path,id:r.match.id});r.done=true;cell.innerHTML=`<span class="ok">${ico('check')} ajouté au client</span>`;toast('Cross-seed ajouté : '+res.name,'ok')}
+    catch(e){const msg=(e.problems||[]).join(' · ')||e.message;cell.innerHTML=`<span class="err" title="${esc(msg)}">${ico('alert')} refusé</span>`;row.title=msg;toast(msg,'err')}})}
+$('crossScan').onclick=()=>run($('crossScan'),async()=>{$('crossList').innerHTML='<div class="empty"><span>Lecture du client et comparaison avec Draupnirr…</span></div>';
+  try{const r=await api('GET','/ui/crossseed/scan');st.cross=(r.rows||[]).map(x=>({...x,done:false}));renderCross();toast(`${r.matched} correspondance(s) trouvée(s)`,r.matched?'ok':'info')}
+  catch(e){st.cross=[];renderCross();$('crossList').innerHTML=`<div class="empty"><span>${esc(e.message)}</span></div>`;toast(e.message,'err')}});
+$('crossOnly').onchange=renderCross;
+$('crossAll').onclick=()=>run($('crossAll'),async()=>{const todo=st.cross.filter(r=>r.match&&!r.done);let ok=0,ko=0;
+  for(const r of todo){const btn=$('crossList').querySelector(`[data-add="${CSS.escape(r.hash)}"]`);if(!btn)continue;await crossAdd(r.hash,btn);r.done?ok++:ko++}
+  toast(`Cross-seed terminé : ${ok} ajouté(s), ${ko} refusé(s)`,ko?'warn':'ok')});

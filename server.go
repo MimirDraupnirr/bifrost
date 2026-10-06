@@ -81,6 +81,8 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/client/test", s.clientTest)
 	s.mux.HandleFunc("GET /ui/client/list", s.clientList)
 	s.mux.HandleFunc("POST /ui/update", s.doUpdate)
+	s.mux.HandleFunc("GET /ui/crossseed/scan", s.crossScan)
+	s.mux.HandleFunc("POST /ui/crossseed/add", s.crossAdd)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
 	s.mux.HandleFunc("POST /ui/ssh/accept", s.sshAccept)
 	s.mux.HandleFunc("GET /ui/browse", s.browse)
@@ -881,4 +883,94 @@ func groupCrossSeeds(list []ClientTorrent, siteURL string) []clientEntry {
 		out = append(out, *byPath[k])
 	}
 	return out
+}
+
+// ---- cross-seed ----
+
+func (s *server) crossScan(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	cfg, site := s.cfg.Client, s.cfg.SiteURL
+	s.mu.Unlock()
+	tc, err := newTorrentClient(cfg)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if tc == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "configure d'abord un client torrent dans les Réglages"})
+		return
+	}
+	c, err := s.client()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	list, err := tc.List(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	rows, err := crossSeedScan(r.Context(), c, groupCrossSeeds(list, site))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	matched := 0
+	for _, row := range rows {
+		if row.Match != nil {
+			matched++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rows": rows, "matched": matched})
+}
+
+// crossAdd : télécharge le .torrent Draupnirr de la correspondance, vérifie
+// que l'arborescence est bien sur le disque, puis l'ajoute au client sur ces
+// données. Rien n'est haché ; le client re-vérifie sauf skip check.
+func (s *server) crossAdd(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path string `json:"path"`
+		ID   string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Path == "" || in.ID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "chemin et id requis"})
+		return
+	}
+	s.mu.Lock()
+	cfg := s.cfg.Client
+	s.mu.Unlock()
+	tc, err := newTorrentClient(cfg)
+	if err != nil || tc == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "aucun client torrent configuré"})
+		return
+	}
+	c, err := s.client()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	raw, err := c.Download(r.Context(), in.ID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	t, err := parseTorrent(raw)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	problems, savePath, err := layoutProblems(r.Context(), s.source(), in.Path, t)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	if len(problems) > 0 {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "arborescence différente, cross-seed refusé", "problems": problems})
+		return
+	}
+	if err := tc.Add(r.Context(), raw, savePath, cfg.SkipCheck, cfg.Label); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": t.Name, "infohash": t.InfoHash, "save_path": savePath})
 }

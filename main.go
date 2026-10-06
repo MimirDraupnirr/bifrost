@@ -125,6 +125,19 @@ func agent(args []string) int {
 			return 1
 		}
 		return printJSON(entries)
+	case "check":
+		// bifrost agent check <root> — lit un torrent (JSON de Torrent) sur stdin,
+		// répond {"missing":[…]} : l'arborescence est-elle sur ce disque ?
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent check <dossier>  (torrent JSON sur stdin)")
+			return 2
+		}
+		var t Torrent
+		if err := json.NewDecoder(os.Stdin).Decode(&t); err != nil {
+			fmt.Fprintln(os.Stderr, "torrent illisible :", err)
+			return 1
+		}
+		return printJSON(map[string]any{"missing": checkFiles(args[1], &t)})
 	case "mediainfo":
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "usage : bifrost agent mediainfo <fichier>")

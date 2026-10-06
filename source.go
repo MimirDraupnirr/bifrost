@@ -16,6 +16,8 @@ type fileSource interface {
 	MainFile(root string, t *Torrent) string
 	// Home : dossier de départ quand la page n'en a pas encore.
 	Home() string
+	// Check : les fichiers du torrent existent-ils sous root, à la bonne taille ? (cross-seed)
+	Check(ctx context.Context, root string, t *Torrent) ([]string, error)
 }
 
 type localSource struct{}
