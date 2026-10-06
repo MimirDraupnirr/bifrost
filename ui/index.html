@@ -3,293 +3,291 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Bifröst</title>
-<style>
-:root{--bg:#F4F5F7;--card:#fff;--line:#DDE1E8;--txt:#1C2230;--mut:#5B6577;--acc:#2F5D9E;--ok:#1F7A3E;--warn:#7A5A12;--err:#9A2F2F;--mono:ui-monospace,Menlo,Consolas,monospace}
-@media (prefers-color-scheme:dark){:root{--bg:#161A22;--card:#1F2430;--line:#2E3544;--txt:#E6EAF2;--mut:#9AA4B5;--acc:#7FB2FF}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-header{height:52px;background:#1C2230;color:#F4F5F7;display:flex;align-items:center;gap:12px;padding:0 20px}
-header b{font-size:17px}header small{color:#9AA4B5}header .me{margin-left:auto;font-size:13px;color:#C9D1DE}
-main{max-width:1100px;margin:0 auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px}
-h2{margin:0;font-size:15px}label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:4px}
-input,select,textarea,button{font:inherit;color:inherit}
-input,select,textarea{height:40px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);min-width:0;width:100%}
-textarea{height:260px;padding:10px;font-family:var(--mono);font-size:12px;resize:vertical}
-button{height:40px;padding:0 16px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
-button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
-button:disabled{opacity:.5;cursor:default}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.row>*{flex:1}.row>button{flex:0 0 auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
-.mut{color:var(--mut);font-size:12px}.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}
-.mono{font-family:var(--mono);font-size:12px;word-break:break-all}
-.list{border:1px solid var(--line);border-radius:8px;max-height:320px;overflow:auto}
-.list div{display:flex;gap:10px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer;align-items:center}
-.list div:first-child{border-top:0}.list div:hover{background:rgba(47,93,158,.08)}.list div.sel{background:rgba(47,93,158,.16)}
-.list span.sz{margin-left:auto;color:var(--mut);font-size:12px;white-space:nowrap}
-.list.tbl div{display:grid;grid-template-columns:minmax(0,1fr) 90px 110px 140px;gap:10px;align-items:center;padding:7px 12px}
-.list.tbl div.head{position:sticky;top:0;background:var(--bg);font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;cursor:default}
-.list.tbl div.head:hover{background:var(--bg)}
-.list.tbl .nm{font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.list.tbl .nm small{display:block;color:var(--mut);font-family:system-ui,sans-serif;font-size:11px;overflow:hidden;text-overflow:ellipsis}
-.list.tbl .r{text-align:right;color:var(--mut);font-size:12px}
-.bdg{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
-.bdg.seed{background:#E3F1E7;color:#1F6B38}.bdg.part{background:#FDF7E7;color:#7A5A12}.bdg.dead{background:#F6E3E3;color:#9A2F2F}
-.bdg.site{background:#EEF4FC;color:#2F5D9E}.bdg.x{background:var(--line);color:var(--mut)}
-.list.tbl div.dim{opacity:.55}
-.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{padding:3px 10px;border-radius:13px;font-size:12px;background:var(--line)}
-.chip.probed{background:#E3F1E7;color:#1F6B38}.chip.declared{background:#EEF4FC;color:#2F5D9E}
-.steps{display:flex;gap:6px;flex-wrap:wrap}.steps span{padding:4px 12px;border-radius:14px;background:var(--line);font-size:12px}
-.steps span.on{background:var(--acc);color:#fff}.steps span.done{background:var(--ok);color:#fff}
-.hidden{display:none}.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
-.imgs img{width:100%;height:70px;object-fit:cover;border-radius:8px;border:3px solid transparent;cursor:pointer}.imgs img.sel{border-color:var(--acc)}
-progress{width:100%;height:8px}.alert{padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
-pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px;white-space:pre-wrap}
-.tmdb{display:flex;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;cursor:pointer}.tmdb.sel{border:2px solid var(--acc)}
-.tmdb img{width:48px;height:72px;object-fit:cover;border-radius:6px;background:var(--line)}
-</style>
+<link rel="stylesheet" href="./app.css">
 </head>
 <body>
-<header><b>Bifröst</b><small id="version"></small><span class="me" id="me"></span><button id="gear" title="Réglages" style="height:32px;padding:0 10px;background:#2A3242;border-color:#2A3242;color:#F4F5F7">⚙ Réglages</button></header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="g-bridge" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#C94E6B"/><stop offset=".25" stop-color="#D99A3E"/><stop offset=".5" stop-color="#52A77A"/><stop offset=".75" stop-color="#3E8ED0"/><stop offset="1" stop-color="#7B6BD6"/></linearGradient>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18M3 7.5h4M3 12h18M3 16.5h4M17 3v18M17 7.5h4M17 16.5h4"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-hard-drive" viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3ZM12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M8 16H3v5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+    <symbol id="i-sort" viewBox="0 0 24 24"><path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/></symbol>
+    <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="m2 2 20 20M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"/></symbol>
+    <symbol id="i-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></symbol>
+    <symbol id="i-clapper" viewBox="0 0 24 24"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3ZM6.2 5.3l3.1 3.9M12.4 3.4l3.1 3.9M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+    <symbol id="i-layout" viewBox="0 0 24 24"><rect width="18" height="7" x="3" y="3" rx="1"/><rect width="9" height="7" x="3" y="14" rx="1"/><rect width="5" height="7" x="16" y="14" rx="1"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+  </defs>
+</svg>
+
+<header class="top">
+  <a class="brand" href="./">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 26C6 12 26 12 29 26" fill="none" stroke="url(#g-bridge)" stroke-width="3" stroke-linecap="round"/><path d="M3 26h26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".5"/></svg>
+    <span class="name">Bifröst</span><span class="ver" id="version"></span>
+  </a>
+  <div class="who" id="who" hidden><svg class="i"><use href="#i-user"/></svg><span id="me"></span></div>
+  <button class="ghost" id="gear" type="button"><svg class="i"><use href="#i-sliders"/></svg><span>Réglages</span></button>
+</header>
+
+<div class="banner warn" id="offline" hidden>
+  <svg class="i"><use href="#i-cloud-off"/></svg>
+  <div class="grow"><b>Draupnirr injoignable</b><div class="mut" id="offlineMsg"></div></div>
+  <button id="retry" type="button"><svg class="i"><use href="#i-refresh"/></svg>Réessayer</button>
+  <button id="relog" type="button"><svg class="i"><use href="#i-key"/></svg>Changer de jeton</button>
+</div>
+<div class="banner info" id="upd" hidden>
+  <svg class="i"><use href="#i-download"/></svg>
+  <div class="grow"><b id="updTitle"></b><div class="mut pre" id="updNotes"></div></div>
+  <button class="primary" id="updBtn" type="button" hidden>Mettre à jour maintenant</button>
+</div>
+
 <main>
-  <section class="card hidden" id="lock">
-    <h2 id="lockTitle">Mot de passe local</h2>
-    <div class="mut" id="lockMsg"></div>
-    <div class="row"><label>Mot de passe<input id="lockPass" type="password" autocomplete="current-password"></label><button class="primary" id="lockBtn">Entrer</button></div>
-    <div id="lockErr" class="err"></div>
+  <section class="focus" id="lock" hidden>
+    <div class="card">
+      <div class="glyph"><svg class="i"><use href="#i-lock"/></svg></div>
+      <h1 id="lockTitle">Mot de passe local</h1>
+      <p class="mut" id="lockMsg"></p>
+      <form id="lockForm" class="row">
+        <label class="grow">Mot de passe<input id="lockPass" type="password" autocomplete="current-password" required></label>
+        <button class="primary" id="lockBtn" type="submit">Entrer</button>
+      </form>
+      <div class="field-err" id="lockErr"></div>
+    </div>
   </section>
-  <div class="alert hidden" id="offline" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1"><b>Draupnirr injoignable</b><div class="mut" id="offlineMsg"></div></div><button id="retry">Réessayer</button><button id="relog">Changer de jeton</button></div>
-  <div class="alert hidden" id="upd" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-    <div style="flex:1"><b id="updTitle"></b><div class="mut" id="updNotes" style="white-space:pre-line"></div></div>
-    <button class="primary hidden" id="updBtn">Mettre à jour maintenant</button>
-  </div>
-  <div class="steps" id="steps"><span class="on">1 · Connexion</span><span>2 · Fichiers</span><span>3 · Œuvre et fiche</span><span>4 · Présentation</span><span>5 · Publier</span></div>
 
-  <section class="card" id="s1">
-    <h2>Connecte ton compte Draupnirr</h2>
-    <div class="mut">Crée un jeton dans <b>Profil › Sécurité › Jetons API</b> du site, puis colle-le ici. Il reste sur cette machine, dans un fichier lisible par toi seul.</div>
-    <div class="row">
-      <label>Adresse du site<input id="site" placeholder="https://draupnirr.example"></label>
-      <label>Jeton API<input id="token" type="password" placeholder="drp_…"></label>
-      <button class="primary" id="connect">Se connecter</button>
+  <section class="focus" id="connect" hidden>
+    <div class="card">
+      <div class="glyph"><svg class="i"><use href="#i-key"/></svg></div>
+      <h1>Relie ce poste à Draupnirr</h1>
+      <p class="mut">Crée un jeton dans <b>Profil › Sécurité › Jetons API</b> du site, puis colle-le ici. Il reste sur cette machine, dans un fichier lisible par toi seul.</p>
+      <form id="connectForm" class="stack">
+        <label>Adresse du site<input id="site" placeholder="https://draupnirr.example" autocomplete="url"></label>
+        <label>Jeton API<input id="token" type="password" placeholder="drp_…" autocomplete="off"></label>
+        <div class="row end"><button class="primary" id="connectBtn" type="submit">Se connecter</button></div>
+      </form>
+      <div class="field-err" id="connectErr"></div>
     </div>
-    <div id="s1msg" class="mut"></div>
-    <div class="row">
-      <label>Dossier où garder les .torrent publiés<input id="outdir"></label>
-      <button id="saveOut">Enregistrer</button>
-    </div>
-    <div id="mi" class="mut"></div>
-    <label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="autoUpd" style="width:16px;height:16px">Mises à jour automatiques au lancement (signature vérifiée)</label>
+  </section>
 
-    <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:10px">
-      <b>Source des fichiers</b>
-      <div class="row" style="align-items:center">
-        <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="radio" name="src" value="local" style="width:16px;height:16px">Ce poste</label>
-        <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="radio" name="src" value="ssh" style="width:16px;height:16px">Seedbox par SSH</label>
+  <div id="app" hidden>
+    <nav class="bridge" aria-label="Étapes">
+      <div class="span"><div class="fill" id="railFill"></div></div>
+      <ol id="rail">
+        <li><button type="button" data-n="1"><i>1</i><span>Fichiers</span></button></li>
+        <li><button type="button" data-n="2"><i>2</i><span>Œuvre et fiche</span></button></li>
+        <li><button type="button" data-n="3"><i>3</i><span>Présentation</span></button></li>
+        <li><button type="button" data-n="4"><i>4</i><span>Publication</span></button></li>
+      </ol>
+    </nav>
+
+    <!-- 1 · Fichiers -->
+    <section class="panel" id="p1">
+      <header class="ph">
+        <div><div class="eyebrow">Étape 1</div><h1>Quelle release ?</h1></div>
+        <div class="seg" role="tablist">
+          <button type="button" class="on" id="modeDir" role="tab"><svg class="i"><use href="#i-folder"/></svg>Un dossier</button>
+          <button type="button" id="modeClient" role="tab"><svg class="i"><use href="#i-hard-drive"/></svg>Depuis mon client</button>
+        </div>
+      </header>
+
+      <div id="dirBar" class="row">
+        <button id="up" type="button" title="Dossier parent"><svg class="i"><use href="#i-arrow-up"/></svg><span class="sr">Parent</span></button>
+        <label class="grow"><span class="sr">Dossier</span><input id="path" class="mono" spellcheck="false" placeholder="/chemin/vers/les/releases"></label>
+        <button id="go" type="button">Ouvrir</button>
       </div>
-      <div id="sshbox" class="hidden" style="display:flex;flex-direction:column;gap:10px">
+      <div id="clientBar" class="row" hidden>
+        <label class="grow"><span class="sr">Filtrer</span><div class="with-icon"><svg class="i"><use href="#i-search"/></svg><input id="clientQ" placeholder="Filtrer : titre, année, team…"></div></label>
+        <label class="switch"><input type="checkbox" id="hideOnSite" checked><span></span>Masquer ceux déjà sur Draupnirr</label>
+        <label class="switch"><input type="checkbox" id="onlyDone" checked><span></span>Complets seulement</label>
+      </div>
+      <div class="note" id="clientNote" hidden></div>
+
+      <div class="list" id="entries"></div>
+
+      <footer class="pf">
+        <label class="grow">Catégorie sur Draupnirr<select id="category"></select></label>
+        <button class="primary" id="prepare" type="button" disabled><svg class="i"><use href="#i-chevron-right"/></svg>Préparer cette release</button>
+      </footer>
+      <div id="prep" class="prep" hidden>
+        <div class="stages"><span data-s="hachage">Hachage</span><span data-s="mediainfo">MediaInfo</span><span data-s="analyse">Analyse</span></div>
+        <div class="bar"><div id="prog"></div></div>
+        <div class="mut" id="prepStep"></div>
+      </div>
+    </section>
+
+    <!-- 2 · Œuvre et fiche -->
+    <section class="panel" id="p2" hidden>
+      <header class="ph">
+        <div><div class="eyebrow">Étape 2</div><h1>L'œuvre et la fiche technique</h1></div>
+      </header>
+
+      <form class="row" id="searchForm">
+        <label class="grow"><span class="sr">Recherche TMDB</span><div class="with-icon"><svg class="i"><use href="#i-search"/></svg><input id="q" placeholder="Titre de l'œuvre sur TMDB"></div></label>
+        <label><span class="sr">Type</span><select id="kind"><option value="movie">Film</option><option value="tv">Série</option></select></label>
+        <button id="search" type="submit">Chercher</button>
+      </form>
+      <div id="tmdb" class="tmdb"></div>
+
+      <h2>Fiche</h2>
+      <div class="grid" id="facets"></div>
+      <div class="grid">
+        <label>Titre de l'œuvre<input id="work_title"></label>
+        <label>Année<input id="year" inputmode="numeric"></label>
+        <label>Épisode (séries)<input id="episode" placeholder="S01E03"></label>
+        <label>Titre d'épisode<input id="episode_title"></label>
+      </div>
+
+      <div class="built" id="builtBox">
+        <div class="eyebrow">Nom qui sera publié</div>
+        <div class="mono big" id="built"></div>
+        <div class="chips" id="chips"></div>
+        <div class="legend mut" id="legend"><span class="chip probed">lu dans MediaInfo</span><span class="chip declared">déclaré</span></div>
+        <div id="missing" class="warn-text"></div>
+      </div>
+      <div class="msgs" id="warnings"></div>
+
+      <footer class="pf">
+        <label class="switch"><input type="checkbox" id="anonymous"><span></span>Upload anonyme</label>
+        <span class="grow"></span>
+        <button class="primary" id="toPres" type="button">Continuer vers la présentation<svg class="i"><use href="#i-chevron-right"/></svg></button>
+      </footer>
+    </section>
+
+    <!-- 3 · Présentation -->
+    <section class="panel" id="p3" hidden>
+      <header class="ph">
+        <div><div class="eyebrow">Étape 3</div><h1>Présentation</h1></div>
+      </header>
+      <div class="row">
+        <label class="grow">Modèle<select id="tpl"></select></label>
+        <label>Format<select id="format"><option value="bbcode">BBCode</option><option value="html">HTML</option></select></label>
+        <button id="regen" type="button"><svg class="i"><use href="#i-refresh"/></svg>Régénérer</button>
+        <button id="previewBtn" type="button"><svg class="i"><use href="#i-eye"/></svg>Aperçu</button>
+      </div>
+      <div>
+        <div class="eyebrow">Captures · images TMDB de l'œuvre</div>
+        <div class="imgs" id="imgs"></div>
+        <div class="mut" id="imgsNote">Choisis une œuvre à l'étape 2 pour voir ses images.</div>
+      </div>
+      <div class="twin">
+        <label>Description<textarea id="description" spellcheck="false"></textarea></label>
+        <div><div class="lbl">Aperçu</div><div class="preview" id="preview"><span class="mut">Clique « Aperçu » pour voir le rendu de Draupnirr.</span></div></div>
+      </div>
+      <label>NFO (vide = composé par Draupnirr)<textarea id="nfo" class="short" spellcheck="false"></textarea></label>
+      <footer class="pf">
+        <span class="grow"></span>
+        <button class="primary" id="publish" type="button"><svg class="i"><use href="#i-upload"/></svg>Publier sur Draupnirr</button>
+      </footer>
+    </section>
+
+    <!-- 4 · Publication -->
+    <section class="panel" id="p4" hidden>
+      <header class="ph">
+        <div><div class="eyebrow">Étape 4</div><h1 id="pubTitle">Publié</h1></div>
+      </header>
+      <div class="msgs" id="pub"></div>
+      <footer class="pf">
+        <a class="btn" id="pubLink" target="_blank" rel="noopener"><svg class="i"><use href="#i-external"/></svg>Voir la fiche</a>
+        <span class="grow"></span>
+        <button class="primary" id="again" type="button"><svg class="i"><use href="#i-plus"/></svg>Préparer une autre release</button>
+      </footer>
+    </section>
+  </div>
+</main>
+
+<dialog id="settings" class="drawer">
+  <header>
+    <h1><svg class="i"><use href="#i-sliders"/></svg>Réglages</h1>
+    <button class="ghost" id="closeSettings" type="button" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
+  </header>
+  <div class="body">
+    <section>
+      <h2>Compte Draupnirr</h2>
+      <div class="status" id="acctStatus"></div>
+      <form class="stack" id="acctForm">
+        <label>Adresse du site<input id="site2" placeholder="https://draupnirr.example"></label>
+        <label>Nouveau jeton API<input id="token2" type="password" placeholder="drp_…" autocomplete="off"></label>
+        <div class="row end"><button id="connect2" type="submit"><svg class="i"><use href="#i-key"/></svg>Se connecter avec ce jeton</button></div>
+      </form>
+      <div class="field-err" id="acctErr"></div>
+    </section>
+
+    <section>
+      <h2>Fichiers publiés</h2>
+      <form class="row" id="outForm">
+        <label class="grow">Dossier où garder les .torrent<input id="outdir" class="mono"></label>
+        <button id="saveOut" type="submit">Enregistrer</button>
+      </form>
+      <div class="status" id="mi"></div>
+      <label class="switch"><input type="checkbox" id="autoUpd"><span></span>Mises à jour automatiques au lancement (signature vérifiée)</label>
+    </section>
+
+    <section>
+      <h2>Source des fichiers</h2>
+      <div class="seg" id="srcSeg">
+        <label><input type="radio" name="src" value="local"><svg class="i"><use href="#i-hard-drive"/></svg>Ce poste</label>
+        <label><input type="radio" name="src" value="ssh"><svg class="i"><use href="#i-server"/></svg>Seedbox par SSH</label>
+      </div>
+      <div id="sshbox" class="stack" hidden>
         <div class="grid">
           <label>Hôte<input id="ssh_host" placeholder="sb.example.net"></label>
-          <label>Port<input id="ssh_port" value="22"></label>
-          <label>Utilisateur<input id="ssh_user"></label>
-          <label>Clé SSH (vide = ~/.ssh/id_*)<input id="ssh_key" placeholder="~/.ssh/id_ed25519"></label>
-          <label>Dossier des données<input id="ssh_dir" placeholder="/home/moi/downloads"></label>
+          <label>Port<input id="ssh_port" value="22" inputmode="numeric"></label>
+          <label>Utilisateur<input id="ssh_user" autocomplete="username"></label>
+          <label>Clé SSH (vide = ~/.ssh/id_*)<input id="ssh_key" class="mono" placeholder="~/.ssh/id_ed25519"></label>
+          <label>Dossier des données<input id="ssh_dir" class="mono" placeholder="/home/moi/downloads"></label>
           <label>Mot de passe SSH (session, jamais enregistré)<input id="ssh_pass" type="password" autocomplete="off"></label>
         </div>
-        <div class="mut">L'agent SSH et tes clés ~/.ssh sont essayés d'abord. Le mot de passe sert aussi de phrase secrète si ta clé en a une.</div>
-        <div class="row"><button class="primary" id="sshTest">Tester la connexion et poser l'agent</button><button id="sshSave">Enregistrer</button></div>
-        <div id="sshSteps"></div>
-        <div id="hostkey" class="hidden alert"><div class="warn" id="hostkeyMsg"></div><button id="hostkeyAccept" style="margin-top:8px">J'ai vérifié cette empreinte, l'accepter</button></div>
+        <p class="mut">L'agent SSH et tes clés ~/.ssh sont essayés d'abord. Le mot de passe sert aussi de phrase secrète si ta clé en a une.</p>
+        <div class="row end"><button id="sshSave" type="button">Enregistrer</button><button class="primary" id="sshTest" type="button">Tester et poser l'agent</button></div>
+        <div class="steps" id="sshSteps"></div>
+        <div class="callout warn" id="hostkey" hidden>
+          <div id="hostkeyMsg"></div>
+          <button id="hostkeyAccept" type="button">J'ai vérifié cette empreinte, l'accepter</button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div style="border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:10px">
-      <b>Client torrent</b>
-      <div class="mut">Pour lister ce que tu seedes déjà et remettre le .torrent Draupnirr sur les mêmes données après publication. Sans client, le .torrent est gardé dans le dossier de sortie.</div>
+    <section>
+      <h2>Client torrent</h2>
+      <p class="mut">Pour lister ce que tu seedes déjà et remettre le .torrent Draupnirr sur les mêmes données après publication. Sans client, le .torrent est gardé dans le dossier de sortie.</p>
       <div class="grid">
         <label>Type<select id="cl_type"><option value="">Aucun</option><option value="qbittorrent">qBittorrent</option><option value="rtorrent">rTorrent / ruTorrent</option><option value="transmission">Transmission</option><option value="deluge">Deluge</option></select></label>
-        <label>URL (ruTorrent : l'adresse de l'interface)<input id="cl_url" placeholder="https://sb.example.net/qbittorrent"></label>
-        <label>Utilisateur<input id="cl_user"></label>
+        <label>URL (ruTorrent : l'adresse de l'interface)<input id="cl_url" placeholder="https://sb.example.net/qbittorrent" autocomplete="url"></label>
+        <label>Utilisateur<input id="cl_user" autocomplete="off"></label>
         <label>Mot de passe (vide = inchangé)<input id="cl_pass" type="password" autocomplete="off"></label>
         <label>Catégorie / label à poser<input id="cl_label" placeholder="draupnirr"></label>
-        <label style="flex-direction:row;align-items:center;gap:6px;padding-top:18px"><input type="checkbox" id="cl_skip" style="width:16px;height:16px">Ne pas re-vérifier les données (skip check)</label>
       </div>
-      <div class="row"><button class="primary" id="clTest">Tester le client</button></div>
-      <div id="clMsg" class="mut"></div>
-    </div>
-  </section>
+      <label class="switch"><input type="checkbox" id="cl_skip"><span></span>Ne pas re-vérifier les données (skip check)</label>
+      <div class="row end"><button class="primary" id="clTest" type="button">Tester le client</button></div>
+      <div class="status" id="clMsg"></div>
+    </section>
+  </div>
+</dialog>
 
-  <section class="card hidden" id="s2">
-    <h2>Choisir les fichiers</h2>
-    <div class="row"><label>Dossier<input id="path"></label><button id="go">Ouvrir</button><button id="up">↑ Parent</button><button id="fromClient">Depuis mon client</button></div>
-    <div class="row hidden" id="clientBar" style="align-items:center">
-      <label>Filtrer<input id="clientQ" placeholder="titre, année, team…"></label>
-      <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="hideOnSite" checked style="width:16px;height:16px">Masquer ceux déjà sur Draupnirr</label>
-      <label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="onlyDone" checked style="width:16px;height:16px">Complets seulement</label>
-      <span class="mut" id="clientCount" style="flex:0;white-space:nowrap"></span>
-    </div>
-    <div class="mut hidden" id="clientNote"></div>
-    <div class="list" id="entries"></div>
-    <div class="row">
-      <label>Catégorie<select id="category"></select></label>
-      <button class="primary" id="prepare" disabled>Préparer cette release</button>
-    </div>
-    <div id="prep" class="hidden">
-      <div id="prepStep" class="mut"></div><progress id="prog" max="100" value="0"></progress>
-    </div>
-  </section>
-
-  <section class="card hidden" id="s3">
-    <h2>L'œuvre et la fiche technique</h2>
-    <div class="row">
-      <label>Recherche TMDB<input id="q"></label>
-      <label>Type<select id="kind"><option value="movie">Film</option><option value="tv">Série</option></select></label>
-      <button id="search">Chercher</button>
-    </div>
-    <div id="tmdb" class="grid"></div>
-    <div class="grid" id="facets"></div>
-    <div class="grid">
-      <label>Titre de l'œuvre<input id="work_title"></label>
-      <label>Année<input id="year"></label>
-      <label>Épisode (séries)<input id="episode" placeholder="S01E03"></label>
-      <label>Titre d'épisode<input id="episode_title"></label>
-    </div>
-    <div><div class="mut">Lues dans MediaInfo (vert) ou déclarées (bleu)</div><div class="chips" id="chips"></div></div>
-    <div class="alert"><div class="mut">Nom qui sera publié</div><div class="mono" id="built"></div><div id="missing" class="warn"></div></div>
-    <div id="warnings"></div>
-    <div class="row"><label style="flex:0;flex-direction:row;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="anonymous" style="width:16px;height:16px">Upload anonyme</label><button class="primary" id="toPres">Présentation →</button></div>
-  </section>
-
-  <section class="card hidden" id="s4">
-    <h2>Présentation</h2>
-    <div class="row">
-      <label>Modèle<select id="tpl"></select></label>
-      <label>Format<select id="format"><option value="bbcode">BBCode</option><option value="html">HTML</option></select></label>
-      <button id="regen">Régénérer</button><button id="previewBtn">Aperçu</button>
-    </div>
-    <div><div class="mut">Captures : images TMDB de l'œuvre</div><div class="imgs" id="imgs"></div></div>
-    <div class="row"><label>Description<textarea id="description"></textarea></label><label>Aperçu<pre class="preview" id="preview"></pre></label></div>
-    <label>NFO (vide = composé par Draupnirr)<textarea id="nfo" style="height:120px"></textarea></label>
-    <div class="row"><button class="primary" id="publish">Publier sur Draupnirr</button></div>
-    <div id="pub"></div>
-  </section>
-</main>
-<script>
-const $=id=>document.getElementById(id);
-const api=async(m,u,b)=>{const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText);return j;};
-const human=n=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return n.toFixed(i?1:0).replace('.',',')+' '+u[i]};
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={step:1,hash:null,clientList:[],job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
-function step(n){st.step=n;[...$('steps').children].forEach((s,i)=>{s.className=i+1<n?'done':i+1===n?'on':''});['s1','s2','s3','s4'].forEach((id,i)=>$(id).classList.toggle('hidden',i+1!==Math.min(n,4)))}
-$('gear').onclick=()=>{const open=$('s1').classList.contains('hidden');$('s1').classList.toggle('hidden',!open);if(!open&&st.step>1)['s2','s3','s4'][Math.min(st.step,4)-2]&&$(['s2','s3','s4'][Math.min(st.step,4)-2]).classList.remove('hidden')};
-
-async function load(){const s=await api('GET','/ui/state');$('version').textContent=s.version;$('site').value=s.config.site_url||'';$('outdir').value=s.config.out_dir||'';
-  $('mi').innerHTML=s.mediainfo?'<span class="ok">✔ mediainfo présent</span>':'<span class="warn">⚠ mediainfo absent — installe-le : <code>'+esc(s.mediainfo_hint)+'</code>. Sans lui, les facettes sont déclarées à la main et Ratatosk les vérifie.</span>';
-  const c=s.config;document.querySelector(`input[name=src][value=${c.source||'local'}]`).checked=true;$('sshbox').classList.toggle('hidden',c.source!=='ssh');
-  $('cl_type').value=c.client?.type||'';$('cl_url').value=c.client?.url||'';$('cl_user').value=c.client?.user||'';$('cl_label').value=c.client?.label||'';$('cl_skip').checked=!!c.client?.skip_check;
-  $('autoUpd').checked=!!s.auto_update;
-  if(s.update){$('upd').classList.remove('hidden');$('updTitle').textContent='Bifröst '+s.update.version+' est disponible (tu as '+s.version+')';
-    let notes=s.update.notes||'';
-    if(s.in_docker)notes+='\nEn Docker : docker pull ghcr.io/mimirdraupnirr/bifrost && docker compose up -d';
-    else if(s.auto_update)notes+='\nElle s\'installera toute seule au prochain lancement.';
-    else $('updBtn').classList.remove('hidden');
-    $('updNotes').textContent=notes.trim()}
-  if(s.locked){$('lock').classList.remove('hidden');['steps','s1'].forEach(id=>$(id).classList.add('hidden'));
-    $('lockTitle').textContent=s.needs_password?'Définis un mot de passe local':'Mot de passe local';
-    $('lockMsg').textContent=s.needs_password?'Cette page n\'écoute pas sur 127.0.0.1 : sans mot de passe, n\'importe qui sur le réseau publierait avec ton jeton. 8 caractères minimum.':'Cette page est protégée.';
-    $('lockBtn').textContent=s.needs_password?'Définir':'Entrer';
-    $('lockBtn').onclick=async()=>{try{await api('POST',s.needs_password?'/ui/password':'/ui/login',{password:$('lockPass').value});location.reload()}catch(e){$('lockErr').textContent=e.message}};return}
-  $('ssh_host').value=c.ssh?.host||'';$('ssh_port').value=c.ssh?.port||22;$('ssh_user').value=c.ssh?.user||'';$('ssh_key').value=c.ssh?.key_path||'';$('ssh_dir').value=c.ssh?.data_dir||'';
-  if(s.has_token){step(2);$('me').textContent='connexion…';if(s.connected){await connected(s.me)}else{try{await connect(true)}catch(e){offline(e.message)}}}}
-function offline(msg){$('offline').classList.remove('hidden');$('offlineMsg').textContent=msg+' — le jeton enregistré n\'a pas été redemandé.';$('me').textContent='hors ligne'}
-$('retry').onclick=()=>{$('offline').classList.add('hidden');connect(true).catch(e=>offline(e.message))};
-$('relog').onclick=()=>{$('offline').classList.add('hidden');$('s1').classList.remove('hidden');$('token').focus()};
-document.querySelectorAll('input[name=src]').forEach(r=>r.onchange=async()=>{$('sshbox').classList.toggle('hidden',r.value!=='ssh');await api('POST','/ui/settings',{source:r.value});if(st.me)browse('')});
-const sshCfg=()=>({host:$('ssh_host').value.trim(),port:parseInt($('ssh_port').value)||22,user:$('ssh_user').value.trim(),key_path:$('ssh_key').value.trim(),data_dir:$('ssh_dir').value.trim()});
-function steps(list){$('sshSteps').innerHTML=list.map(x=>`<div class="${x.ok?'ok':'err'}">${x.ok?'✔':'✖'} ${esc(x.label)}${x.detail?' — '+esc(x.detail):''}</div>`).join('')}
-const clCfg=()=>({type:$('cl_type').value,url:$('cl_url').value.trim(),user:$('cl_user').value.trim(),password:$('cl_pass').value,label:$('cl_label').value.trim(),skip_check:$('cl_skip').checked});
-$('clTest').onclick=async()=>{$('clMsg').textContent='Connexion…';try{const r=await api('POST','/ui/client/test',clCfg());$('clMsg').innerHTML='<span class="ok">✔ '+esc(r.version)+'</span>';$('cl_pass').value=''}catch(e){$('clMsg').innerHTML='<span class="err">✖ '+esc(e.message)+'</span>'}};
-$('autoUpd').onchange=()=>api('POST','/ui/settings',{auto_update:$('autoUpd').checked});
-$('updBtn').onclick=async()=>{$('updBtn').disabled=true;try{const r=await api('POST','/ui/update');$('updTitle').textContent=r.status;setTimeout(()=>location.reload(),4000)}catch(e){$('updTitle').textContent=e.message;$('updBtn').disabled=false}};
-try{$('hideOnSite').checked=localStorage.getItem('bf.hideOnSite')!=='0';$('onlyDone').checked=localStorage.getItem('bf.onlyDone')!=='0'}catch(e){}
-function badge(t){if(t.progress<1)return `<span class="bdg part">${Math.round(t.progress*100)} %</span>`;const s=(t.state||'').toLowerCase();if(/missing|error/.test(s))return '<span class="bdg dead">fichiers absents</span>';if(/pause|stopped/.test(s))return '<span class="bdg x">en pause</span>';return '<span class="bdg seed">seed</span>'}
-function renderClient(){const q=$('clientQ').value.toLowerCase().trim();const hide=$('hideOnSite').checked,done=$('onlyDone').checked;try{localStorage.setItem('bf.hideOnSite',hide?'1':'0');localStorage.setItem('bf.onlyDone',done?'1':'0')}catch(e){}
-  const all=st.clientList||[];const rows=all.filter(t=>(!hide||!t.on_draupnirr)&&(!done||t.progress>=1)&&(!q||t.name.toLowerCase().includes(q)));
-  $('clientCount').textContent=rows.length+' / '+all.length+(all.some(t=>t.on_draupnirr)?' · '+all.filter(t=>t.on_draupnirr).length+' déjà sur Draupnirr':'');
-  $('entries').className='list tbl';
-  $('entries').innerHTML='<div class="head"><span>Release</span><span class="r">Taille</span><span>État</span><span>Draupnirr</span></div>'+rows.map(t=>`<div data-h="${esc(t.hash)}" class="${t.on_draupnirr?'dim':''}"><span class="nm" title="${esc(t.path)}">${esc(t.name)}<small>${esc(t.path)}</small></span><span class="r">${human(t.size)}</span><span>${badge(t)}${t.copies>1?` <span class="bdg x" title="même données, ${t.copies} trackers">×${t.copies}</span>`:''}</span><span>${t.on_draupnirr?'<span class="bdg site">déjà dessus</span>':'<span class="mut">—</span>'}</span></div>`).join('')||'<div class="mut" style="display:block">rien à afficher avec ces filtres</div>';
-  [...$('entries').querySelectorAll('[data-h]')].forEach(d=>d.onclick=()=>{[...$('entries').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');const t=all.find(x=>x.hash===d.dataset.h);st.sel=t.path;st.hash=t.hash;$('prepare').disabled=false})}
-['clientQ','hideOnSite','onlyDone'].forEach(id=>$(id).oninput=renderClient);
-$('fromClient').onclick=async()=>{$('clientBar').classList.remove('hidden');$('clientNote').classList.remove('hidden');$('clientNote').textContent='Lecture du client…';st.sel=null;st.hash=null;$('prepare').disabled=true;
-  try{const r=await api('GET','/ui/client/list');st.clientList=(r.torrents||[]).sort((a,b)=>a.name.localeCompare(b.name));
-    $('clientNote').textContent=(r.exportable?'Le .torrent d\'origine sera exporté et re-scellé, sans re-hachage.':'Ce client n\'exporte pas : les données seront re-hachées.')+' Les cross-seeds (mêmes données) sont regroupés.';renderClient()}
-  catch(e){$('clientNote').innerHTML='<span class="err">'+esc(e.message)+'</span>'}};
-$('sshSave').onclick=()=>api('POST','/ui/settings',{source:'ssh',ssh:sshCfg(),password:$('ssh_pass').value}).then(()=>steps([{ok:true,label:'Réglages enregistrés'}]),e=>steps([{ok:false,label:e.message}]));
-$('sshTest').onclick=async()=>{$('sshTest').disabled=true;steps([{ok:true,label:'Connexion en cours…'}]);$('hostkey').classList.add('hidden');
-  try{const r=await api('POST','/ui/ssh/test',{ssh:sshCfg(),password:$('ssh_pass').value});steps(r.steps);
-    if(r.hostkey){$('hostkeyMsg').textContent=(r.hostkey.Changed?'⚠ La clé de cet hôte a CHANGÉ. ':'Première connexion à '+r.hostkey.Host+'. ')+'Empreinte : '+r.hostkey.Fingerprint;$('hostkey').classList.remove('hidden');
-      $('hostkeyAccept').onclick=async()=>{await api('POST','/ui/ssh/accept',{key:r.hostkey.Key});$('hostkey').classList.add('hidden');$('sshTest').click()}}
-    else if(r.steps.every(x=>x.ok)){document.querySelector('input[name=src][value=ssh]').checked=true;await api('POST','/ui/settings',{source:'ssh'});if(st.me)browse('')}}
-  catch(e){steps([{ok:false,label:e.message}])}finally{$('sshTest').disabled=false}};
-async function connected(me){st.me=me;$('me').textContent=me.name+' · '+me.class+' · ratio '+(me.ratio??'∞');$('s1msg').innerHTML='<span class="ok">✔ Connecté : '+esc(me.name)+'</span>';$('offline').classList.add('hidden');await cats();if(st.step<2)step(2);browse('').catch(()=>{})}
-async function connect(silent){const r=await api('POST','/ui/connect',{site_url:$('site').value,token:silent?'':$('token').value});$('token').value='';await connected(r.me)}
-$('connect').onclick=()=>connect(false).catch(e=>$('s1msg').innerHTML='<span class="err">'+esc(e.message)+'</span>');
-$('saveOut').onclick=()=>api('POST','/ui/settings',{out_dir:$('outdir').value}).then(()=>$('mi').insertAdjacentHTML('afterbegin','<div class="ok">✔ Dossier enregistré</div>'));
-
-async function cats(){const r=await api('GET','/ui/categories');const all=(r.categories||[]);const slugs=all.map(c=>c.slug);
-  // Famille = le plus long autre slug dont celui-ci est l'extension (films-film → films) ; sinon racine.
-  const fam=c=>slugs.filter(s=>s!==c.slug&&c.slug.startsWith(s+'-')).sort((a,b)=>b.length-a.length)[0]||c.slug;
-  const groups={};all.forEach(c=>{(groups[fam(c)]||=[]).push(c)});
-  $('category').innerHTML=Object.keys(groups).sort((a,b)=>a.localeCompare(b)).map(f=>{const root=all.find(c=>c.slug===f);const subs=groups[f].filter(c=>c.slug!==f).sort((a,b)=>a.name.localeCompare(b.name));
-    return `<optgroup label="${esc(root?.name||f)}">${(root?[root]:[]).concat(subs).map(c=>`<option value="${esc(c.slug)}">${esc(c.name)}${c.slug===f&&subs.length?' (toute la famille)':''}</option>`).join('')}</optgroup>`}).join('');
-  const film=all.find(c=>c.slug==='films-film');if(film)$('category').value=film.slug}
-async function browse(p){const r=await api('GET','/ui/browse?path='+encodeURIComponent(p));$('path').value=r.path;$('path').dataset.parent=r.parent;st.sel=null;$('prepare').disabled=true;
-  $('clientNote').classList.add('hidden');$('clientBar').classList.add('hidden');$('entries').className='list';st.hash=null;$('entries').innerHTML=r.entries.map(e=>`<div data-p="${esc(e.path)}" data-d="${e.is_dir?1:0}">${e.is_dir?'📁':'🎞'} ${esc(e.name)}<span class="sz">${human(e.size)}</span></div>`).join('')||'<div class="mut">dossier vide</div>';
-  [...$('entries').children].forEach(d=>{d.onclick=()=>{[...$('entries').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');st.sel=d.dataset.p;$('prepare').disabled=false};d.ondblclick=()=>{if(d.dataset.d==='1')browse(d.dataset.p)}})}
-$('go').onclick=()=>browse($('path').value);$('up').onclick=()=>browse($('path').dataset.parent);
-
-$('prepare').onclick=async()=>{const r=await api('POST','/ui/prepare',{path:st.sel,category:$('category').value,hash:st.hash||''});st.hash=null;st.job=r.job;$('prep').classList.remove('hidden');poll()};
-async function poll(){const j=await api('GET','/ui/job/'+st.job);const[d,t]=j.progress;$('prog').value=t?d/t*100:0;$('prepStep').textContent=j.step+(t?' · '+human(d)+' / '+human(t):'');
-  if(!j.done){setTimeout(poll,500);return}if(j.error){$('prepStep').innerHTML='<span class="err">'+esc(j.error)+'</span>';return}
-  st.miErr=j.mediainfo_error||'';
-  st.analysis=j.analysis;step(3);showAnalysis(j.analysis);$('q').value=j.analysis.clean_title||j.torrent.name;$('kind').value=j.analysis.guessed_type==='tv'?'tv':'movie';$('year').value=j.analysis.year||'';$('work_title').value=j.analysis.clean_title||'';search()}
-
-function showAnalysis(a){const n=a.nomenclature;$('warnings').innerHTML=(st.miErr?'<div class="warn">⚠ MediaInfo : '+esc(st.miErr)+' — les facettes restent déclarées, Ratatosk les vérifiera.</div>':'')+(a.warnings||[]).map(w=>'<div class="warn">⚠ '+esc(w)+'</div>').join('')+(a.bot||[]).map(b=>`<div class="${b.level==='error'?'err':'warn'}">${b.level==='error'?'✖':'⚠'} Ratatosk : ${esc(b.message)}</div>`).join('')||'<div class="ok">✔ Aucun avertissement</div>';
-  if(!n){$('built').textContent=a.name;$('chips').innerHTML='';$('facets').innerHTML='';$('missing').textContent='';return}
-  $('built').textContent=n.built_name||a.name;$('missing').textContent=n.missing?.length?'Manque : '+n.missing.join(', ')+(n.missing_title?' · titre de l\'œuvre':''):(n.missing_title?'Choisis l\'œuvre (titre)':'');
-  $('chips').innerHTML=Object.entries(n.facets||{}).map(([k,v])=>`<span class="chip ${v.origin}">${esc(v.value)}</span>`).join('')+(n.media?Object.values(n.media).filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join(''):'');
-  if(!$('facets').children.length){const voc=n.vocabulary||{};const decl=['source','edition','group'];
-    $('facets').innerHTML=decl.map(f=>f==='group'?`<label>Team<input data-f="group" value="${esc(n.facets?.group?.value||'')}"></label>`:`<label>${f==='source'?'Source':'Édition'}<select data-f="${f}"><option value="">—</option>${(voc[f]||[]).map(t=>`<option ${n.facets?.[f]?.value===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`).join('');
-    $('facets').querySelectorAll('[data-f]').forEach(el=>el.onchange=reanalyze)}}
-function sheet(){const facets={};$('facets').querySelectorAll('[data-f]').forEach(el=>{if(el.value)facets[el.dataset.f]=el.value});
-  return{category:$('category').value,facets,work_title:$('work_title').value,year:$('year').value,episode:$('episode').value,episode_title:$('episode_title').value,tmdb_id:st.picked?.id,tmdb_type:st.picked?($('kind').value):undefined}}
-async function reanalyze(){const a=await api('POST','/ui/analyze',{job:st.job,...sheet()});st.analysis=a;showAnalysis(a)}
-['work_title','year','episode','episode_title'].forEach(id=>$(id).onchange=reanalyze);
-
-async function search(){const r=await api('GET','/ui/tmdb?q='+encodeURIComponent($('q').value)+'&type='+$('kind').value).catch(()=>({results:[]}));
-  $('tmdb').innerHTML=(r.results||[]).slice(0,6).map((x,i)=>`<div class="tmdb" data-i="${i}"><img src="${esc(x.poster_url||'')}" alt=""><div><b>${esc(x.title)}</b> ${x.year?'('+x.year+')':''}<div class="mut">${esc((x.overview||'').slice(0,120))}</div></div></div>`).join('')||'<div class="mut">Aucun résultat</div>';
-  [...$('tmdb').children].forEach(d=>d.onclick=()=>{[...$('tmdb').children].forEach(x=>x.classList.remove('sel'));d.classList.add('sel');st.picked=r.results[d.dataset.i];$('work_title').value=st.picked.title;if(st.picked.year)$('year').value=st.picked.year;reanalyze();images()})}
-$('search').onclick=search;$('kind').onchange=search;
-async function images(){const r=await api('GET','/ui/tmdb-images?id='+st.picked.id+'&type='+$('kind').value+'&episode='+encodeURIComponent($('episode').value)).catch(()=>({images:[]}));st.images=r.images||[];st.captures=[];
-  $('imgs').innerHTML=st.images.map((im,i)=>`<img src="${esc(im.thumb)}" data-i="${i}" alt="">`).join('');[...$('imgs').children].forEach(im=>im.onclick=()=>{im.classList.toggle('sel');const u=st.images[im.dataset.i].url;st.captures=im.classList.contains('sel')?[...st.captures,u]:st.captures.filter(x=>x!==u)})}
-
-$('toPres').onclick=async()=>{step(4);if(!st.templates.length){const c=await api('GET','/ui/presentations').catch(()=>({templates:[]}));st.templates=c.templates||[]}
-  $('tpl').innerHTML='<option value="">— aucun (description libre) —</option>'+st.templates.map((t,i)=>`<option value="${i}" ${t.is_default&&(!t.family||t.family===$('category').value.split('-')[0])?'selected':''}>${esc(t.name)}${t.family?' · '+esc(t.family):''}</option>`).join('');
-  if(!$('description').value)regen()};
-function vars(){const a=st.analysis||{},n=a.nomenclature||{},f=n.facets||{},v=k=>f[k]?.value||'',m=n.media||{},fmt=$('format').value,p=st.picked||{};
-  const caps=st.captures.map(u=>fmt==='html'?`<img src="${u}" alt="">`:`[img]${u}[/img]`).join('\n');
-  return{titre:p.title||a.clean_title||'',annee:$('year').value,type:$('kind').value==='tv'?'Série':'Film',synopsis:p.overview||'',affiche:p.poster_url||'',tmdb_url:p.id?`https://www.themoviedb.org/${$('kind').value}/${p.id}`:'',nom_release:n.built_name||a.name||'',taille:a.size_human||'',nb_fichiers:String(a.file_count||''),fichiers:(a.files||[]).map(x=>`${x.path} (${x.size_human})`).join('\n'),episode:$('episode').value,titre_episode:$('episode_title').value,tags:(a.suggested_tags||[]).join(', '),source:v('source'),edition:v('edition'),team:v('group'),langues:v('languages'),resolution:v('resolution'),codec_video:v('video_codec'),profondeur:v('bit_depth'),hdr:v('hdr'),codec_audio:v('audio_codec'),canaux:v('channels'),duree:m.duration||'',debit:m.bitrate||'',sous_titres:m.subtitles||'',mediainfo:'',nfo:n.nfo||'',captures:caps,uploadeur:$('anonymous').checked?'Anonyme':(st.me?.name||''),date:new Date().toLocaleDateString('fr-FR')}}
-function render(body,d){let out=body;for(;;){const s=out.indexOf('{{#');if(s<0)break;const e=out.indexOf('}}',s);const name=out.slice(s+3,e);const close='{{/'+name+'}}';const c=out.indexOf(close,s);if(c<0)break;out=out.slice(0,s)+(d[name]?out.slice(e+2,c):'')+out.slice(c+close.length)}
-  return out.replace(/\{\{\s*([a-z_]+)\s*\}\}/g,(m,k)=>d[k]??'').replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
-function regen(){const t=st.templates[$('tpl').value];if(!t){return}$('format').value=t.format;$('description').value=render(t.body,vars())}
-$('regen').onclick=regen;$('tpl').onchange=regen;
-$('previewBtn').onclick=async()=>{const r=await api('POST','/ui/preview',{content:$('description').value,format:$('format').value});$('preview').innerHTML=r.html};
-$('publish').onclick=async()=>{$('publish').disabled=true;$('pub').innerHTML='<div class="mut">Envoi…</div>';
-  try{const r=await api('POST','/ui/publish',{job:st.job,category:$('category').value,description:$('description').value,description_format:$('format').value,nfo_text:$('nfo').value,
-    meta:{...sheet(),poster_url:st.picked?.poster_url,synopsis:st.picked?.overview,tags:(st.analysis?.suggested_tags||[])}});
-    step(5);$('pub').innerHTML=`<div class="ok">✔ Publié · ${r.result.awaiting_validation?'en attente de validation Ratatosk — garde le seed':'au catalogue'}</div>${r.client_added?`<div class="ok">✔ Ajouté à ${esc(r.client_added)} sur les mêmes données${$('cl_skip').checked?', sans re-vérification':''}.</div>`:''}${r.client_error?`<div class="warn">⚠ Client torrent : ${esc(r.client_error)}</div>`:''}${r.saved?`<div class="ok">✔ .torrent personnalisé enregistré : <span class="mono">${esc(r.saved)}</span> — ajoute-le à ton client sur les mêmes données.</div>`:`<div class="warn">⚠ ${esc(r.download_error||'')}</div>`}<div><a href="${esc(r.url)}" target="_blank">Voir la fiche</a></div>`}
-  catch(e){$('pub').innerHTML='<div class="err">✖ '+esc(e.message)+'</div>';$('publish').disabled=false}};
-load().catch(e=>$('s1msg').innerHTML='<span class="err">'+esc(e.message)+'</span>');
-</script>
+<div id="toasts" aria-live="polite"></div>
+<script src="./app.js"></script>
 </body>
 </html>
