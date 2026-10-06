@@ -41,7 +41,8 @@ button:disabled{opacity:.5;cursor:default}
 .chip.probed{background:#E3F1E7;color:#1F6B38}.chip.declared{background:#EEF4FC;color:#2F5D9E}
 .steps{display:flex;gap:6px;flex-wrap:wrap}.steps span{padding:4px 12px;border-radius:14px;background:var(--line);font-size:12px}
 .steps span.on{background:var(--acc);color:#fff}.steps span.done{background:var(--ok);color:#fff}
-.hidden{display:none}.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.hidden{display:none!important}
+.steps span.done,.steps span.on{cursor:pointer}.steps span.done:hover{filter:brightness(1.15)}.imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
 .imgs img{width:100%;height:70px;object-fit:cover;border-radius:8px;border:3px solid transparent;cursor:pointer}.imgs img.sel{border-color:var(--acc)}
 progress{width:100%;height:8px}.alert{padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg)}
 pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:260px;overflow:auto;font-size:12px;white-space:pre-wrap}
@@ -179,8 +180,8 @@ const $=id=>document.getElementById(id);
 const api=async(m,u,b)=>{const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||r.statusText);return j;};
 const human=n=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return n.toFixed(i?1:0).replace('.',',')+' '+u[i]};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={step:1,hash:null,clientList:[],job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
-function step(n){st.step=n;[...$('steps').children].forEach((s,i)=>{s.className=i+1<n?'done':i+1===n?'on':''});['s1','s2','s3','s4'].forEach((id,i)=>$(id).classList.toggle('hidden',i+1!==Math.min(n,4)))}
+const st={step:1,maxStep:1,hash:null,clientList:[],job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:''};
+function step(n){st.step=n;st.maxStep=Math.max(st.maxStep||1,n);[...$('steps').children].forEach((s,i)=>{s.className=i+1<n?'done':i+1===n?'on':(i+1<=st.maxStep?'done':'');s.onclick=(i+1<=st.maxStep&&i+1<5)?()=>step(i+1):null});['s1','s2','s3','s4'].forEach((id,i)=>$(id).classList.toggle('hidden',i+1!==Math.min(n,4)))}
 $('gear').onclick=()=>{const open=$('s1').classList.contains('hidden');$('s1').classList.toggle('hidden',!open);if(!open&&st.step>1)['s2','s3','s4'][Math.min(st.step,4)-2]&&$(['s2','s3','s4'][Math.min(st.step,4)-2]).classList.remove('hidden')};
 
 async function load(){const s=await api('GET','/ui/state');$('version').textContent=s.version;$('site').value=s.config.site_url||'';$('outdir').value=s.config.out_dir||'';
