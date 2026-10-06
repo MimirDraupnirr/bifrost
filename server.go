@@ -35,6 +35,8 @@ type server struct {
 	// Hors loopback : la page exige le mot de passe local (auth.go).
 	requireAuth bool
 	sess        *sessions
+	// Lot en cours ou terminé (batch.go).
+	batch *batchJob
 	// Dernière vérification de mise à jour (24 h de cache).
 	update        *release
 	updateChecked time.Time
@@ -81,6 +83,9 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/client/test", s.clientTest)
 	s.mux.HandleFunc("GET /ui/client/list", s.clientList)
 	s.mux.HandleFunc("POST /ui/update", s.doUpdate)
+	s.mux.HandleFunc("POST /ui/batch/start", s.batchStartHandler)
+	s.mux.HandleFunc("POST /ui/batch/stop", s.batchStopHandler)
+	s.mux.HandleFunc("GET /ui/batch/status", s.batchStatusHandler)
 	s.mux.HandleFunc("GET /ui/crossseed/scan", s.crossScan)
 	s.mux.HandleFunc("POST /ui/crossseed/add", s.crossAdd)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
@@ -825,6 +830,15 @@ func (s *server) doUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "une préparation est en cours : réessaie après"})
 		return
 	}
+	s.mu.Lock()
+	if s.batch != nil && s.batch.Running {
+		busy = true
+	}
+	s.mu.Unlock()
+	if busy {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "un lot est en cours : réessaie après"})
+		return
+	}
 	rel := s.pendingUpdate(r.Context())
 	if rel == nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "déjà à jour"})
@@ -973,4 +987,49 @@ func (s *server) crossAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": t.Name, "infohash": t.InfoHash, "save_path": savePath})
+}
+
+// ---- mode lot ----
+
+func (s *server) batchStartHandler(w http.ResponseWriter, r *http.Request) {
+	var in batchOpts
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, err)
+		return
+	}
+	if _, err := s.client(); err != nil {
+		fail(w, err)
+		return
+	}
+	j, err := s.batchStart(in)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"root": j.Root, "dry_run": j.DryRun})
+}
+
+func (s *server) batchStopHandler(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	if s.batch != nil && s.batch.cancel != nil {
+		s.batch.cancel()
+	}
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]string{"ok": "1"})
+}
+
+func (s *server) batchStatusHandler(w http.ResponseWriter, r *http.Request) {
+	j := s.batchSnapshot()
+	if j == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"rows": []any{}, "done": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, j)
+}
+
+func writeFileMkdir(p string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(p, data, 0o644)
 }

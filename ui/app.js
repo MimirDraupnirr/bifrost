@@ -244,9 +244,9 @@ load().catch(e=>{$('connect').hidden=false;$('connectErr').textContent=e.message
 
 
 // ---- Vue Cross-seed ----
-function view(name){const cross=name==='cross';$('viewCross').classList.toggle('on',cross);$('viewUpload').classList.toggle('on',!cross);
-  document.querySelector('.bridge').hidden=cross;[1,2,3,4].forEach(k=>$('p'+k).hidden=cross||k!==st.step);$('pX').hidden=!cross;scrollTop()}
-$('viewUpload').onclick=()=>view('upload');$('viewCross').onclick=()=>view('cross');
+function view(name){const cross=name==='cross',batch=name==='batch',up=!cross&&!batch;$('viewCross').classList.toggle('on',cross);$('viewBatch').classList.toggle('on',batch);$('viewUpload').classList.toggle('on',up);
+  document.querySelector('.bridge').hidden=!up;[1,2,3,4].forEach(k=>$('p'+k).hidden=!up||k!==st.step);$('pX').hidden=!cross;$('pB').hidden=!batch;if(batch)batchInit();scrollTop()}
+$('viewUpload').onclick=()=>view('upload');$('viewCross').onclick=()=>view('cross');$('viewBatch').onclick=()=>view('batch');
 st.cross=[];
 function crossRow(r){const m=r.match;const key=esc(r.hash);
   return `<div class="x ${m?'':'none'}" data-h="${key}"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc(r.path)}</small></span><span class="r">${human(r.size)}</span>`+
@@ -267,3 +267,22 @@ $('crossOnly').onchange=renderCross;
 $('crossAll').onclick=()=>run($('crossAll'),async()=>{const todo=st.cross.filter(r=>r.match&&!r.done);let ok=0,ko=0;
   for(const r of todo){const btn=$('crossList').querySelector(`[data-add="${CSS.escape(r.hash)}"]`);if(!btn)continue;await crossAdd(r.hash,btn);r.done?ok++:ko++}
   toast(`Cross-seed terminé : ${ok} ajouté(s), ${ko} refusé(s)`,ko?'warn':'ok')});
+
+
+// ---- Vue Lot ----
+st.batchTimer=null;
+function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').value||'';
+  const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
+  if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
+  batchPoll()}
+const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
+function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){return}
+  $('batchSummary').hidden=false;$('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'');
+  $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
+  $('batchList').innerHTML='<div class="b h"><span>Release</span><span class="r">Taille</span><span>État</span><span>Détail</span></div>'+rows.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc(r.built||r.tmdb||'')}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('')}
+async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
+$('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
+  if(!dry&&!confirm('Publier pour de vrai ce qui est sûr ? Les releases douteuses resteront « à revoir ».'))return;
+  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value});
+  toast(dry?'Simulation lancée':'Lot lancé','ok');batchPoll()});
+$('batchStop').onclick=()=>api('POST','/ui/batch/stop').then(()=>toast('Arrêt demandé après la release en cours','info'));

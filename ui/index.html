@@ -112,6 +112,7 @@
     <div class="views"><div class="seg" role="tablist" aria-label="Vue">
       <button type="button" class="on" id="viewUpload" role="tab"><svg class="i"><use href="#i-upload"/></svg>Uploader</button>
       <button type="button" id="viewCross" role="tab"><svg class="i"><use href="#i-link"/></svg>Cross-seed</button>
+      <button type="button" id="viewBatch" role="tab"><svg class="i"><use href="#i-folder"/></svg>Lot</button>
     </div></div>
     <nav class="bridge" aria-label="Étapes">
       <div class="span"><div class="fill" id="railFill"></div></div>
@@ -279,6 +280,28 @@
       </div>
       <div class="list tbl" id="crossList"><div class="empty"><svg class="i"><use href="#i-link"/></svg><span>Lance l'analyse pour voir ce qui peut être cross-seedé.</span></div></div>
       <div class="msgs" id="crossMsgs"></div>
+    </section>
+
+    <!-- Lot -->
+    <section class="panel" id="pB" hidden>
+      <header class="ph"><span class="eyebrow">Lot</span><h2>Publier tout un dossier, sans y toucher</h2></header>
+      <p class="mut">Chaque sous-dossier ou fichier est comparé à Draupnirr par taille. Ce qui n'y est pas est haché, lu par MediaInfo, rattaché à son œuvre TMDB, nommé par Draupnirr — puis publié <b>seulement si tout est sûr</b> : œuvre certaine (titre et année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir », pour l'étape Uploader. Commence par une simulation.</p>
+      <div class="grid">
+        <label class="span2">Dossier à passer au crible<input id="batchPath" placeholder="/home/moi/downloads"></label>
+        <label>Catégorie des films<select id="batchCatFilm"></select></label>
+        <label>Catégorie des séries<select id="batchCatTV"></select></label>
+        <label>Examiner au plus<input id="batchLimit" type="number" min="0" value="0" placeholder="0 = tout"></label>
+        <label>Publier au plus<input id="batchMax" type="number" min="0" value="0" placeholder="0 = sans plafond"></label>
+      </div>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="batchDry" checked><span></span>Simulation : rien n'est publié</label>
+        <label class="switch"><input type="checkbox" id="batchVideo" checked><span></span>Vidéos seulement</label>
+        <span class="grow"></span>
+        <button id="batchStop" type="button" hidden><svg class="i"><use href="#i-x"/></svg>Arrêter</button>
+        <button class="primary" id="batchStart" type="button"><svg class="i"><use href="#i-chevron-right"/></svg>Lancer</button>
+      </div>
+      <div class="row" id="batchSummary" hidden><span class="mut" id="batchCount"></span></div>
+      <div class="list tbl" id="batchList"><div class="empty"><svg class="i"><use href="#i-folder"/></svg><span>Choisis un dossier et lance une simulation.</span></div></div>
     </section>
   </div>
 </main>

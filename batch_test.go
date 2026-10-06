@@ -1,0 +1,74 @@
+package main
+
+import "testing"
+
+func TestPickWorkAndDecide(t *testing.T) {
+	a := &analysis{OK: true, CleanTitle: "Marinette", Year: float64(2023), GuessedType: "movie",
+		Nomenclature: &struct {
+			BuiltName    string            `json:"built_name"`
+			Missing      []string          `json:"missing"`
+			MissingTitle bool              `json:"missing_title"`
+			NameFacets   map[string]string `json:"name_facets"`
+			Media        map[string]any    `json:"media"`
+			NFO          string            `json:"nfo"`
+			Facets       map[string]struct {
+				Value  string `json:"value"`
+				Origin string `json:"origin"`
+			} `json:"facets"`
+		}{BuiltName: "Marinette.2023.FRENCH.1080p.WEB.H265-GL0P"}}
+	results := []tmdbResult{{ID: 1, Title: "Avec Marinette", Year: float64(1999)}, {ID: 2, Title: "Marinette", Year: float64(2023)}}
+	pick, why := pickWork(a, results)
+	if pick == nil || pick.ID != 2 || why != "" {
+		t.Fatalf("choix : %+v %q", pick, why)
+	}
+	if ok, _ := decide(a, pick, ""); !ok {
+		t.Fatal("publiable attendu")
+	}
+	a.Nomenclature.Missing = []string{"Langues"}
+	if ok, why := decide(a, pick, ""); ok || why == "" {
+		t.Fatal("facette manquante → à revoir")
+	}
+	a.Nomenclature.Missing = nil
+	a.Warnings = []string{"Ce torrent existe déjà sur Draupnirr (même infohash)."}
+	if ok, _ := decide(a, pick, ""); ok {
+		t.Fatal("doublon → à revoir")
+	}
+	a.Warnings = nil
+	a.Year = nil
+	if p, why := pickWork(a, results); p != nil || why == "" {
+		t.Fatal("sans année, pas de choix automatique")
+	}
+	a.Year = float64(2023)
+	if p, _ := pickWork(a, []tmdbResult{{ID: 3, Title: "Marinette", Year: float64(2010)}}); p != nil {
+		t.Fatal("mauvaise année → pas de choix")
+	}
+	if ok, why := decide(a, nil, "œuvre introuvable sur TMDB"); ok || why != "œuvre introuvable sur TMDB" {
+		t.Fatal("sans œuvre → à revoir avec la raison")
+	}
+}
+
+func TestBatchDescriptionFallsBackToDefault(t *testing.T) {
+	a := &analysis{Name: "X.2023.1080p.WEB-GRP", SizeHuman: "1 Go", FileCount: 1, GuessedType: "movie"}
+	pick := &tmdbResult{ID: 7, Title: "X", Year: float64(2023), Overview: "Synopsis.", PosterURL: "https://img/p.jpg"}
+	desc, format := batchDescription(a, pick, nil, "films-film")
+	if format != "bbcode" || !contains(desc, "[b]X[/b]") || !contains(desc, "themoviedb.org/movie/7") || contains(desc, "{{") {
+		t.Fatalf("description par défaut : %s", desc)
+	}
+	fam := "films"
+	tpl := map[string]presTemplate{"films": {Body: "Mon modèle {{titre}} {{annee}}", Format: "html", Family: &fam, IsDefault: true}}
+	desc, format = batchDescription(a, pick, tpl, "films-film")
+	if format != "html" || desc != "Mon modèle X 2023" {
+		t.Fatalf("modèle du membre : %q %s", desc, format)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && (func() bool {
+		for i := 0; i+len(sub) <= len(s); i++ {
+			if s[i:i+len(sub)] == sub {
+				return true
+			}
+		}
+		return false
+	})()
+}
