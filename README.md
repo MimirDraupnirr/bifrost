@@ -17,6 +17,7 @@
   <img alt="Go" src="https://img.shields.io/github/go-mod/go-version/MimirDraupnirr/bifrost?logo=go&logoColor=white">
   <img alt="Plateformes" src="https://img.shields.io/badge/macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-binaire%20unique-555">
   <img alt="Mises à jour signées" src="https://img.shields.io/badge/mises%20%C3%A0%20jour-sign%C3%A9es%20ed25519-7A5A12">
+  <a href="LICENSE"><img alt="Licence MIT" src="https://img.shields.io/github/license/MimirDraupnirr/bifrost?color=555"></a>
 </p>
 
 ---
@@ -107,3 +108,7 @@ make build       # agents Linux (amd64, arm64) puis binaire du poste
 Go, bibliothèque standard et `x/crypto` seulement ; page en HTML, CSS et JavaScript natifs, embarquée dans le binaire. Une release = un tag `vX.Y.Z` : goreleaser publie les binaires et `checksums.txt`, le workflow signe `checksums.txt.sig`, et l'image multi-arch part sur ghcr.io.
 
 Conception, décisions et historique : `docs/23-BIFROST-OUTIL-UPLOAD-GO.md` du dépôt Draupnirr.
+
+## Licence
+
+[MIT](LICENSE).
