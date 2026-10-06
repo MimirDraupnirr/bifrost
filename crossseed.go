@@ -44,8 +44,9 @@ func (c *Client) Match(ctx context.Context, sizes []int64) ([]matchEntry, error)
 
 type crossRow struct {
 	ClientTorrent
-	Match *matchEntry `json:"match,omitempty"`
-	Score float64     `json:"score,omitempty"`
+	Match  *matchEntry `json:"match,omitempty"`
+	Score  float64     `json:"score,omitempty"`
+	hashes []string
 }
 
 var reTok = regexp.MustCompile(`[^a-z0-9]+`)
@@ -78,18 +79,12 @@ func similarity(a, b string) float64 {
 // crossSeedScan : les torrents complets du client qui ne sont pas encore sur
 // Draupnirr, avec leur meilleure correspondance de taille s'il y en a une.
 func crossSeedScan(ctx context.Context, c *Client, list []clientEntry) ([]crossRow, error) {
-	known := map[string]bool{}
-	for _, t := range list {
-		known[strings.ToLower(t.Hash)] = true
-	}
-	var rows []crossRow
 	var sizes []int64
 	seen := map[int64]bool{}
 	for _, t := range list {
 		if t.Progress < 1 || t.OnDraupnirr || t.Size <= 0 {
 			continue
 		}
-		rows = append(rows, crossRow{ClientTorrent: t.ClientTorrent})
 		if !seen[t.Size] {
 			seen[t.Size] = true
 			sizes = append(sizes, t.Size)
@@ -106,27 +101,10 @@ func crossSeedScan(ctx context.Context, c *Client, list []clientEntry) ([]crossR
 			return nil, err
 		}
 		for _, m := range found {
-			if known[strings.ToLower(m.InfoHash)] {
-				continue // déjà dans le client sous son hash Draupnirr
-			}
 			bySize[m.Size] = append(bySize[m.Size], m)
 		}
 	}
-	for i := range rows {
-		cands := bySize[rows[i].Size]
-		if len(cands) == 0 {
-			continue
-		}
-		best, bestScore := cands[0], -1.0
-		for _, m := range cands {
-			if s := similarity(rows[i].Name, m.Name); s > bestScore {
-				best, bestScore = m, s
-			}
-		}
-		m := best
-		rows[i].Match = &m
-		rows[i].Score = bestScore
-	}
+	rows := applyMatches(list, bySize)
 	sort.SliceStable(rows, func(i, j int) bool {
 		if (rows[i].Match != nil) != (rows[j].Match != nil) {
 			return rows[i].Match != nil
@@ -200,4 +178,64 @@ func (r *remoteSource) Check(ctx context.Context, root string, t *Torrent) ([]st
 		return nil, errors.New("réponse de l'agent illisible")
 	}
 	return res.Missing, nil
+}
+
+// applyMatches : pour chaque release complète hors Draupnirr, la meilleure
+// correspondance de taille — sauf si une de ses copies est déjà le torrent
+// Draupnirr, ou si la correspondance est déjà dans le client.
+func applyMatches(list []clientEntry, bySize map[int64][]matchEntry) []crossRow {
+	known := map[string]bool{}
+	for _, t := range list {
+		for _, h := range t.Hashes {
+			known[h] = true
+		}
+		known[strings.ToLower(t.Hash)] = true
+	}
+	var rows []crossRow
+	for _, t := range list {
+		if t.Progress < 1 || t.OnDraupnirr || t.Size <= 0 {
+			continue
+		}
+		rows = append(rows, crossRow{ClientTorrent: t.ClientTorrent, hashes: t.Hashes})
+	}
+	kept := rows[:0]
+	for i := range rows {
+		cands := bySize[rows[i].Size]
+		// Une des copies de cette release EST le torrent Draupnirr (même
+		// infohash qu'au catalogue) : rien à cross-seeder, quel que soit le
+		// domaine de son tracker.
+		already := false
+		var fresh []matchEntry
+		for _, m := range cands {
+			h := strings.ToLower(m.InfoHash)
+			mine := h == strings.ToLower(rows[i].Hash)
+			for _, rh := range rows[i].hashes {
+				mine = mine || rh == h
+			}
+			if mine {
+				already = true
+			} else if !known[h] {
+				fresh = append(fresh, m)
+			}
+		}
+		if already {
+			continue
+		}
+		kept = append(kept, rows[i])
+		cands = fresh
+		if len(cands) == 0 {
+			continue
+		}
+		best, bestScore := cands[0], -1.0
+		for _, m := range cands {
+			if s := similarity(rows[i].Name, m.Name); s > bestScore {
+				best, bestScore = m, s
+			}
+		}
+		m := best
+		kept[len(kept)-1].Match = &m
+		kept[len(kept)-1].Score = bestScore
+	}
+	rows = kept
+	return kept
 }

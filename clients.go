@@ -234,7 +234,7 @@ func (q *qbitClient) Add(ctx context.Context, raw []byte, savePath string, skipC
 		return err
 	}
 	if strings.HasPrefix(string(data), "Fails") {
-		return errors.New("qBittorrent a refusé le .torrent")
+		return errors.New("qBittorrent a refusé le .torrent : il est sans doute déjà dans le client (même infohash)")
 	}
 	return nil
 }

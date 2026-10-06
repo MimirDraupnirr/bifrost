@@ -859,6 +859,9 @@ type clientEntry struct {
 	ClientTorrent
 	Copies      int  `json:"copies"`
 	OnDraupnirr bool `json:"on_draupnirr"`
+	// Tous les infohash des copies fusionnées : la copie Draupnirr en fait
+	// partie même quand c'est une autre qui est affichée.
+	Hashes []string `json:"hashes"`
 }
 
 func groupCrossSeeds(list []ClientTorrent, siteURL string) []clientEntry {
@@ -881,6 +884,7 @@ func groupCrossSeeds(list []ClientTorrent, siteURL string) []clientEntry {
 		}
 		if e, ok := byPath[key]; ok {
 			e.Copies++
+			e.Hashes = append(e.Hashes, strings.ToLower(t.Hash))
 			e.OnDraupnirr = e.OnDraupnirr || onSite
 			// Pour l'export, préférer une copie qui n'est PAS celle de Draupnirr
 			// (son infohash est déjà pris) et qui est complète.
@@ -889,7 +893,7 @@ func groupCrossSeeds(list []ClientTorrent, siteURL string) []clientEntry {
 			}
 			continue
 		}
-		byPath[key] = &clientEntry{ClientTorrent: t, Copies: 1, OnDraupnirr: onSite}
+		byPath[key] = &clientEntry{ClientTorrent: t, Copies: 1, OnDraupnirr: onSite, Hashes: []string{strings.ToLower(t.Hash)}}
 		order = append(order, key)
 	}
 	out := make([]clientEntry, 0, len(order))
@@ -972,6 +976,14 @@ func (s *server) crossAdd(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fail(w, err)
 		return
+	}
+	if list, lerr := tc.List(r.Context()); lerr == nil {
+		for _, ct := range list {
+			if strings.EqualFold(ct.Hash, t.InfoHash) {
+				writeJSON(w, http.StatusConflict, map[string]any{"error": "déjà dans le client : ce torrent Draupnirr y est sous le même infohash (" + ct.State + ")"})
+				return
+			}
+		}
 	}
 	problems, savePath, err := layoutProblems(r.Context(), s.source(), in.Path, t)
 	if err != nil {

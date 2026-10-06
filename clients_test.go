@@ -12,6 +12,9 @@ func TestGroupCrossSeeds(t *testing.T) {
 	if len(out) != 2 || out[0].Copies != 2 || !out[0].OnDraupnirr || out[0].Hash != "a" || out[1].OnDraupnirr {
 		t.Fatalf("groupement : %+v", out)
 	}
+	if len(out[0].Hashes) != 2 || out[0].Hashes[1] != "b" {
+		t.Fatalf("les infohash des copies fusionnées doivent être conservés : %v", out[0].Hashes)
+	}
 	if h := magnetTrackers("magnet:?xt=urn:btih:x&tr=https%3A%2F%2Fdraupnirr.xyz%2Fannounce%2Fk&tr=udp%3A%2F%2Ft.example%3A80"); len(h) != 2 || h[0] != "draupnirr.xyz" {
 		t.Fatalf("magnet : %v", h)
 	}

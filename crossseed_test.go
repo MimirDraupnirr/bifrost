@@ -34,3 +34,20 @@ func TestCheckFiles(t *testing.T) {
 		t.Fatalf("fichier seul : %v", m)
 	}
 }
+
+func TestScanSkipsReleasesWhoseDraupnirrCopyIsAlreadyInTheClient(t *testing.T) {
+	// Deux copies fusionnées sur le même chemin : « a » (autre tracker,
+	// affichée) et « ddd » qui EST le torrent Draupnirr. Le catalogue connaît
+	// « ddd » → rien à proposer, même si le tracker n'a pas été reconnu.
+	list := []clientEntry{{ClientTorrent: ClientTorrent{Hash: "a", Name: "Rel", Size: 10, Progress: 1}, Copies: 2, Hashes: []string{"a", "ddd"}}}
+	bySize := map[int64][]matchEntry{10: {{ID: "x", Name: "Rel", InfoHash: "DDD", Size: 10}}}
+	rows := applyMatches(list, bySize)
+	if len(rows) != 0 {
+		t.Fatalf("rien à cross-seeder attendu, obtenu %+v", rows)
+	}
+	bySize[10] = []matchEntry{{ID: "y", Name: "Rel", InfoHash: "eee", Size: 10}}
+	rows = applyMatches(list, bySize)
+	if len(rows) != 1 || rows[0].Match == nil || rows[0].Match.ID != "y" {
+		t.Fatalf("une correspondance nouvelle attendue : %+v", rows)
+	}
+}
