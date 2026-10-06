@@ -6,7 +6,8 @@
 
 <p align="center">
   L'outil d'upload de <b>Draupnirr</b> : un binaire, une page locale, zéro installation.<br>
-  Il prépare la release, laisse Draupnirr calculer la fiche, et remet le <code>.torrent</code> dans ton client pour que tu seedes aussitôt.
+  Il prépare la release, laisse Draupnirr calculer la fiche, et remet le <code>.torrent</code> dans ton client pour que tu seedes aussitôt.<br>
+  Trois modes : <b>Uploader</b> une release à la main, <b>Cross-seed</b> en un clic ce que tu seedes déjà ailleurs, <b>Lot</b> pour publier un dossier entier sans y toucher.
 </p>
 
 <p align="center">
@@ -38,6 +39,14 @@ Uploader proprement, c'est fastidieux : créer le `.torrent` avec le bon tag sou
 | **Œuvre et fiche** | Hachage (ou export du `.torrent` d'origine depuis qBittorrent, sans re-hachage), MediaInfo, recherche TMDB, puis la fiche : facettes lues dans le fichier en vert, déclarées en bleu, nom publié, manquants, verdict de Ratatosk. |
 | **Présentation** | Tes modèles du profil, variables remplies, images TMDB en un clic, barre d'outils BBCode/HTML, et l'**aperçu en temps réel rendu par Draupnirr**. |
 | **Publication** | Envoi par l'API, récupération du `.torrent` personnalisé, ajout au client sur les mêmes données. Tu seedes tout de suite. |
+
+### Cross-seed en un clic
+
+Ce que tu seedes déjà pour d'autres trackers et qui existe sur Draupnirr se remet en seed ici aussi. Bifröst compare ton client au catalogue par **taille exacte**, départage par le nom, puis vérifie **fichier par fichier** que l'arborescence du `.torrent` Draupnirr est bien sur tes données avant de l'ajouter au client. Rien n'est téléchargé, rien n'est haché. Les cross-seeds déjà présents, sous quelque domaine de tracker que ce soit, ne sont jamais proposés.
+
+### Lot : un dossier entier, sans y toucher
+
+Tu donnes un dossier, Bifröst passe chaque entrée au crible : déjà sur Draupnirr → ignorée ; sinon hachage, MediaInfo, œuvre TMDB, fiche calculée par Draupnirr, **publication seulement si tout est sûr** — œuvre certaine (titre ou titre original, même année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir » avec la raison, à finir dans l'onglet Uploader. Simulation par défaut, plafonds d'examen et de publication, filtre « vidéos seulement », arrêt propre, et une pause entre deux publications pour respecter l'API du site.
 
 <p align="center">
   <img src="docs/screens/fiche.jpg" alt="L'œuvre et la fiche technique : facettes lues dans MediaInfo, nom publié, verdict de Ratatosk" width="820">
@@ -94,6 +103,7 @@ Bifröst parle à ta seedbox et à ton client **directement**, de ton poste. Le 
 
 - **Jeton API** plutôt que passkey : révocable seul depuis le profil, sans couper tes clients torrent du swarm.
 - **Mot de passe local** dès que la page n'écoute pas sur `127.0.0.1` (argon2id, session, pause croissante sur échec).
+- **Le lot ne publie jamais dans le doute** : chaque garde-fou est une raison affichée, et la simulation montre exactement ce qui partirait.
 - **Mises à jour signées** : au lancement, Bifröst vérifie la dernière release, contrôle la signature ed25519 de `checksums.txt` et le SHA-256 du binaire, se remplace et se relance. Rien n'est installé si la signature ne colle pas. Désactivable dans les Réglages. L'agent sur la seedbox suit la version du poste.
 - Aucune dépendance réseau dans la page, pas de télémétrie. Le code est public : vérifie-le, `draupnirr.go` est le seul fichier qui parle au site.
 
