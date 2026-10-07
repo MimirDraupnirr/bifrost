@@ -1,21 +1,13 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestPickWorkAndDecide(t *testing.T) {
 	a := &analysis{OK: true, CleanTitle: "Marinette", Year: float64(2023), GuessedType: "movie",
-		Nomenclature: &struct {
-			BuiltName    string            `json:"built_name"`
-			Missing      []string          `json:"missing"`
-			MissingTitle bool              `json:"missing_title"`
-			NameFacets   map[string]string `json:"name_facets"`
-			Media        map[string]any    `json:"media"`
-			NFO          string            `json:"nfo"`
-			Facets       map[string]struct {
-				Value  string `json:"value"`
-				Origin string `json:"origin"`
-			} `json:"facets"`
-		}{BuiltName: "Marinette.2023.FRENCH.1080p.WEB.H265-GL0P"}}
+		Nomenclature: &nomenclature{BuiltName: "Marinette.2023.FRENCH.1080p.WEB.H265-GL0P"}}
 	results := []tmdbResult{{ID: 1, Title: "Avec Marinette", Year: float64(1999)}, {ID: 2, Title: "Marinette", Year: float64(2023)}}
 	// Titre français différent, original identique : retenu quand même.
 	a2 := &analysis{OK: true, CleanTitle: "American Fiction", Year: float64(2023)}
@@ -80,4 +72,19 @@ func contains(s, sub string) bool {
 		}
 		return false
 	})()
+}
+
+func TestLooseMapAcceptsEmptyPHPArray(t *testing.T) {
+	var a analysis
+	raw := `{"ok":true,"nomenclature":{"built_name":"X","missing":[],"name_facets":[],"facets":[],"media":{"duration":"1h32"}}}`
+	if err := json.Unmarshal([]byte(raw), &a); err != nil {
+		t.Fatalf("un tableau vide PHP doit passer : %v", err)
+	}
+	if a.Nomenclature.Media["duration"] != "1h32" || len(a.Nomenclature.NameFacets) != 0 {
+		t.Fatalf("décodage : %+v", a.Nomenclature)
+	}
+	raw = `{"ok":true,"nomenclature":{"name_facets":{"source":"WEB"},"facets":{"source":{"value":"WEB","origin":"declared"}}}}`
+	if err := json.Unmarshal([]byte(raw), &a); err != nil || a.Nomenclature.NameFacets["source"] != "WEB" || a.Nomenclature.Facets["source"].Origin != "declared" {
+		t.Fatalf("objet normal : %v %+v", err, a.Nomenclature)
+	}
 }

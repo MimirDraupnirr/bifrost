@@ -130,10 +130,26 @@ func (q *qbitClient) login(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !strings.HasPrefix(string(data), "Ok") {
-		return errors.New("qBittorrent : identifiants refusés")
+	if strings.HasPrefix(string(data), "Ok") {
+		return nil
 	}
-	return nil
+	// Pas « Ok. » : soit les identifiants sont faux (« Fails. »), soit ce
+	// n'est pas qBittorrent qui répond (proxy, page de connexion d'un panel…).
+	// Avant de conclure, un accès libre (IP en liste blanche) se vérifie.
+	if probe, err := q.hc.Get(q.base + "/api/v2/app/version"); err == nil {
+		b, perr := readBody(probe)
+		if perr == nil && strings.HasPrefix(strings.TrimSpace(string(b)), "v") {
+			return nil // authentification contournée pour cette IP : on continue sans cookie
+		}
+	}
+	body := strings.TrimSpace(string(data))
+	if len(body) > 80 {
+		body = body[:80] + "…"
+	}
+	if strings.HasPrefix(body, "Fails") {
+		return errors.New("qBittorrent a répondu « Fails. » : identifiant ou mot de passe refusé (ceux de l'interface Web, Options › Interface Web ; après plusieurs échecs, qBittorrent bannit l'IP quelques minutes)")
+	}
+	return fmt.Errorf("ce n'est pas qBittorrent qui répond à %s/api/v2/auth/login (réponse : « %s ») : vérifie l'adresse, un proxy ou une page de connexion intermédiaire", q.base, body)
 }
 
 func (q *qbitClient) get(ctx context.Context, p string, query url.Values) ([]byte, error) {

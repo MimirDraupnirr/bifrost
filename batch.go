@@ -77,18 +77,40 @@ type analysis struct {
 		Level   string `json:"level"`
 		Message string `json:"message"`
 	} `json:"bot"`
-	Nomenclature *struct {
-		BuiltName    string            `json:"built_name"`
-		Missing      []string          `json:"missing"`
-		MissingTitle bool              `json:"missing_title"`
-		NameFacets   map[string]string `json:"name_facets"`
-		Media        map[string]any    `json:"media"`
-		NFO          string            `json:"nfo"`
-		Facets       map[string]struct {
-			Value  string `json:"value"`
-			Origin string `json:"origin"`
-		} `json:"facets"`
-	} `json:"nomenclature"`
+	Nomenclature *nomenclature `json:"nomenclature"`
+}
+
+type facetValue struct {
+	Value  string `json:"value"`
+	Origin string `json:"origin"`
+}
+
+type nomenclature struct {
+	BuiltName    string               `json:"built_name"`
+	Missing      []string             `json:"missing"`
+	MissingTitle bool                 `json:"missing_title"`
+	NameFacets   looseMap[string]     `json:"name_facets"`
+	Media        looseMap[any]        `json:"media"`
+	NFO          string               `json:"nfo"`
+	Facets       looseMap[facetValue] `json:"facets"`
+}
+
+// looseMap : PHP encode un tableau associatif VIDE en « [] », pas en « {} ».
+// Un map Go refuse « [] » ; ici on l'accepte comme un map vide.
+type looseMap[T any] map[string]T
+
+func (m *looseMap[T]) UnmarshalJSON(b []byte) error {
+	t := strings.TrimSpace(string(b))
+	if t == "null" || strings.HasPrefix(t, "[") {
+		*m = looseMap[T]{}
+		return nil
+	}
+	var raw map[string]T
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+	*m = raw
+	return nil
 }
 
 type tmdbResult struct {
