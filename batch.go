@@ -373,7 +373,7 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 			return "ignoré", "pas une vidéo (." + ext + ")"
 		}
 	}
-	raw, err := src.MakeTorrent(ctx, r.Path, sourceTag, func(done, total int64) {
+	raw, cached, err := s.makeTorrentCached(ctx, src, r.Path, sourceTag, r.Size, func(done, total int64) {
 		s.mu.Lock()
 		if total > 0 {
 			r.Detail = fmt.Sprintf("hachage %d %%", done*100/total)
@@ -382,6 +382,11 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	})
 	if err != nil {
 		return "erreur", err.Error()
+	}
+	if cached {
+		s.mu.Lock()
+		r.Detail = "torrent repris du cache"
+		s.mu.Unlock()
 	}
 	t, err := parseTorrent(raw)
 	if err != nil {

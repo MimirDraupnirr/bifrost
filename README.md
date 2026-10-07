@@ -104,6 +104,7 @@ Bifröst parle à ta seedbox et à ton client **directement**, de ton poste. Le 
 
 - **Jeton API** plutôt que passkey : révocable seul depuis le profil, sans couper tes clients torrent du swarm.
 - **Mot de passe local** dès que la page n'écoute pas sur `127.0.0.1` (argon2id, session, pause croissante sur échec).
+- **Les `.torrent` créés sont gardés en cache** (clé : source, chemin, taille) : relancer un lot ou re-préparer une release ne re-hache pas des gigaoctets déjà hachés.
 - **Le lot ne publie jamais dans le doute** : chaque garde-fou est une raison affichée, et la simulation montre exactement ce qui partirait.
 - **Mises à jour signées** : au lancement, Bifröst vérifie la dernière release, contrôle la signature ed25519 de `checksums.txt` et le SHA-256 du binaire, se remplace et se relance. Rien n'est installé si la signature ne colle pas. Désactivable dans les Réglages. L'agent sur la seedbox suit la version du poste.
 - Aucune dépendance réseau dans la page, pas de télémétrie. Le code est public : vérifie-le, `draupnirr.go` est le seul fichier qui parle au site.

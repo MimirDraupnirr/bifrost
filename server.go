@@ -37,6 +37,8 @@ type server struct {
 	sess        *sessions
 	// Lot en cours ou terminé (batch.go).
 	batch *batchJob
+	// .torrent déjà créés (cache.go).
+	cache *torrentCache
 	// Dernière vérification de mise à jour (24 h de cache).
 	update        *release
 	updateChecked time.Time
@@ -61,7 +63,7 @@ type job struct {
 }
 
 func newServer(cfg *Config, configPath string) *server {
-	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}, sess: newSessions()}
+	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}, sess: newSessions(), cache: newTorrentCache(configPath)}
 	sub, _ := fs.Sub(uiFS, "ui")
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
 	// Jeton déjà enregistré : on se connecte tout de suite, sans attendre la
@@ -416,11 +418,17 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if raw == nil {
-			raw, err = src.MakeTorrent(ctx, in.Path, sourceTag, func(done, total int64) {
+			var cached bool
+			raw, cached, err = s.makeTorrentCached(ctx, src, in.Path, sourceTag, 0, func(done, total int64) {
 				s.mu.Lock()
 				j.Progress = [2]int64{done, total}
 				s.mu.Unlock()
 			})
+			if cached {
+				s.mu.Lock()
+				j.Step = "torrent repris du cache"
+				s.mu.Unlock()
+			}
 		}
 		s.mu.Lock()
 		if err != nil {
