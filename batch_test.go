@@ -51,15 +51,32 @@ func TestPickWorkAndDecide(t *testing.T) {
 func TestBatchDescriptionFallsBackToDefault(t *testing.T) {
 	a := &analysis{Name: "X.2023.1080p.WEB-GRP", SizeHuman: "1 Go", FileCount: 1, GuessedType: "movie"}
 	pick := &tmdbResult{ID: 7, Title: "X", Year: float64(2023), Overview: "Synopsis.", PosterURL: "https://img/p.jpg"}
-	desc, format := batchDescription(a, pick, nil, "films-film")
+	desc, format := batchDescription(a, pick, nil, "films-film", "nra")
 	if format != "bbcode" || !contains(desc, "[b]X[/b]") || !contains(desc, "themoviedb.org/movie/7") || contains(desc, "{{") {
 		t.Fatalf("description par défaut : %s", desc)
 	}
 	fam := "films"
-	tpl := map[string]presTemplate{"films": {Body: "Mon modèle {{titre}} {{annee}}", Format: "html", Family: &fam, IsDefault: true}}
-	desc, format = batchDescription(a, pick, tpl, "films-film")
+	site := []presTemplate{{Name: "Fiche film", Body: "Site {{titre}} par {{uploadeur}}", Format: "bbcode", Family: &fam, IsDefault: true, Site: true}}
+	if desc, _ = batchDescription(a, pick, site, "films-film", "nra"); desc != "Site X par nra" {
+		t.Fatalf("sans modèle du membre, celui du site remplace la présentation sobre : %q", desc)
+	}
+	tpl := append([]presTemplate{{Body: "Mon modèle {{titre}} {{annee}}", Format: "html", Family: &fam, IsDefault: true}}, site...)
+	desc, format = batchDescription(a, pick, tpl, "films-film", "nra")
 	if format != "html" || desc != "Mon modèle X 2023" {
 		t.Fatalf("modèle du membre : %q %s", desc, format)
+	}
+}
+
+func TestDecideReadsRatatoskLevels(t *testing.T) {
+	a := &analysis{OK: true, CleanTitle: "X", Year: float64(2023), Nomenclature: &nomenclature{BuiltName: "X.2023.1080p.WEB.H264-GRP"}}
+	pick := &tmdbResult{ID: 1, Title: "X", Year: float64(2023)}
+	a.Bot = []issue{{"info", "summary", "1 fichier"}, {"warn", "naming_spaces", "Le nom contient des espaces"}}
+	if ok, why := decide(a, pick, ""); !ok {
+		t.Fatalf("une note et les espaces du dossier ne bloquent pas : %s", why)
+	}
+	a.Bot[1].Code, a.Bot[1].Message = "duplicate_release", "doublon probable"
+	if ok, why := decide(a, pick, ""); ok || why != "Ratatosk : doublon probable" {
+		t.Fatalf("un « warn » de Ratatosk envoie en revue : %v %q", ok, why)
 	}
 }
 

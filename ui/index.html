@@ -162,19 +162,30 @@
     <!-- 2 · Œuvre et fiche -->
     <section class="panel" id="p2" hidden>
       <header class="ph">
-        <div><div class="eyebrow">Étape 2</div><h1>L'œuvre et la fiche technique</h1></div>
+        <div><div class="eyebrow">Étape 2</div><h1 id="p2title">L'œuvre et la fiche technique</h1></div>
       </header>
 
-      <form class="row" id="searchForm">
-        <label class="grow"><span class="sr">Recherche TMDB</span><div class="with-icon"><svg class="i"><use href="#i-search"/></svg><input id="q" placeholder="Titre de l'œuvre sur TMDB"></div></label>
-        <label><span class="sr">Type</span><select id="kind"><option value="movie">Film</option><option value="tv">Série</option></select></label>
-        <button id="search" type="submit">Chercher</button>
-      </form>
-      <div id="tmdb" class="tmdb"></div>
+      <div class="stack" id="videoWork">
+        <form class="row" id="searchForm">
+          <label class="grow"><span class="sr">Recherche TMDB</span><div class="with-icon"><svg class="i"><use href="#i-search"/></svg><input id="q" placeholder="Titre de l'œuvre sur TMDB"></div></label>
+          <label><span class="sr">Type</span><select id="kind"><option value="movie">Film</option><option value="tv">Série</option></select></label>
+          <button id="search" type="submit">Chercher</button>
+        </form>
+        <div id="tmdb" class="tmdb"></div>
+      </div>
+      <div class="stack" id="musicWork" hidden>
+        <form class="row" id="mbForm">
+          <label class="grow">Artiste<input id="mbArtist"></label>
+          <label class="grow">Album<input id="mbAlbum"></label>
+          <button id="mbSearch" type="submit"><svg class="i"><use href="#i-search"/></svg>Chercher sur MusicBrainz</button>
+        </form>
+        <div id="mb" class="tmdb mb"></div>
+      </div>
 
       <h2>Fiche</h2>
       <div class="grid" id="facets"></div>
-      <div class="grid">
+      <div class="types" id="types" role="group" aria-label="Type de l'album" hidden></div>
+      <div class="grid" id="videoFields">
         <label>Titre de l'œuvre<input id="work_title"></label>
         <label>Année<input id="year" inputmode="numeric"></label>
         <label>Épisode (séries)<input id="episode" placeholder="S01E03"></label>
@@ -187,6 +198,7 @@
         <div class="chips" id="chips"></div>
         <div class="legend mut" id="legend"><span class="chip probed">lu dans MediaInfo</span><span class="chip declared">déclaré</span></div>
         <div id="missing" class="warn-text"></div>
+        <ol class="tracks" id="tracks" hidden></ol>
       </div>
       <div class="msgs" id="warnings"></div>
 
@@ -207,7 +219,7 @@
         <label>Format<select id="format"><option value="bbcode">BBCode</option><option value="html">HTML</option></select></label>
         <button id="regen" type="button"><svg class="i"><use href="#i-refresh"/></svg>Régénérer</button>
       </div>
-      <div>
+      <div id="capsBox">
         <div class="eyebrow">Captures · images TMDB de l'œuvre · un clic insère l'image dans la description</div>
         <div class="imgs" id="imgs"></div>
         <div class="mut" id="imgsNote">Choisis une œuvre à l'étape 2 pour voir ses images.</div>
@@ -286,16 +298,19 @@
     <section class="panel" id="pB" hidden>
       <header class="ph"><span class="eyebrow">Lot</span><h2>Publier tout un dossier, sans y toucher</h2></header>
       <p class="mut">Chaque sous-dossier ou fichier est comparé à Draupnirr par taille. Ce qui n'y est pas est haché, lu par MediaInfo, rattaché à son œuvre TMDB, nommé par Draupnirr — puis publié <b>seulement si tout est sûr</b> : œuvre certaine (titre et année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir », pour l'étape Uploader. Commence par une simulation.</p>
+      <p class="mut"><b>Musique</b> : chaque dossier de pistes, à toute profondeur, est un album et une release (<code>CD1</code>, <code>Disc 2</code>… restent avec leur album). L'édition MusicBrainz n'est prise que si elle est la seule à avoir le même titre, le même artiste et autant de pistes ; sinon l'album part sans, nommé d'après ses tags.</p>
       <div class="grid">
         <label class="span2">Dossier à passer au crible<input id="batchPath" placeholder="/home/moi/downloads"></label>
         <label>Catégorie des films<select id="batchCatFilm"></select></label>
         <label>Catégorie des séries<select id="batchCatTV"></select></label>
+        <label id="batchSrcWrap" hidden>Source d'un album si rien ne l'indique<select id="batchSrc"><option value="">aucune : « à revoir »</option><option>WEB</option><option>CD</option><option>VINYL</option></select></label>
         <label>Examiner au plus<input id="batchLimit" type="number" min="0" value="0" placeholder="0 = tout"></label>
         <label>Publier au plus<input id="batchMax" type="number" min="0" value="0" placeholder="0 = sans plafond"></label>
       </div>
       <div class="row">
         <label class="switch"><input type="checkbox" id="batchDry" checked><span></span>Simulation : rien n'est publié</label>
         <label class="switch"><input type="checkbox" id="batchVideo" checked><span></span>Vidéos seulement</label>
+        <label class="switch"><input type="checkbox" id="batchMusic"><span></span>Musique : un album = une release</label>
         <span class="grow"></span>
         <button id="batchStop" type="button" hidden><svg class="i"><use href="#i-x"/></svg>Arrêter</button>
         <button class="primary" id="batchStart" type="button"><svg class="i"><use href="#i-chevron-right"/></svg>Lancer</button>

@@ -122,6 +122,14 @@ func (c *Client) TMDBImages(ctx context.Context, id, kind, episode string) (json
 	return out, err
 }
 
+// MusicBrainz : GET /api/musicbrainz — éditions d'un album (artist, album,
+// tracks) ou une édition et ses pistes (id).
+func (c *Client) MusicBrainz(ctx context.Context, q url.Values) (json.RawMessage, error) {
+	var out json.RawMessage
+	err := c.do(ctx, http.MethodGet, "/api/musicbrainz", q, nil, "", &out)
+	return out, err
+}
+
 func (c *Client) Presentations(ctx context.Context) (json.RawMessage, error) {
 	var out json.RawMessage
 	err := c.do(ctx, http.MethodGet, "/api/me/presentations", nil, nil, "", &out)
@@ -148,7 +156,9 @@ func multipartForm(fields map[string][]string, files []fileField) (io.Reader, st
 	w := multipart.NewWriter(&buf)
 	for k, vs := range fields {
 		for _, v := range vs {
-			if v == "" {
+			// Vide = absent, sauf le type d'un album : vide exprès, il retire
+			// les types que l'édition MusicBrainz aurait posés (docs/25 §6.3).
+			if v == "" && !strings.HasSuffix(k, "[type]") {
 				continue
 			}
 			if err := w.WriteField(k, v); err != nil {

@@ -59,7 +59,10 @@ type job struct {
 	Exported  bool            `json:"exported"`
 	MediaErr  string          `json:"mediainfo_error,omitempty"`
 	Analysis  json.RawMessage `json:"analysis,omitempty"`
-	raw       []byte
+	// Album : mediainfo de tout le dossier, analyse en catégorie Musique.
+	Music    bool   `json:"music"`
+	Category string `json:"category,omitempty"`
+	raw      []byte
 }
 
 func newServer(cfg *Config, configPath string) *server {
@@ -100,6 +103,7 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("GET /ui/categories", s.categories)
 	s.mux.HandleFunc("GET /ui/tmdb", s.tmdb)
 	s.mux.HandleFunc("GET /ui/tmdb-images", s.tmdbImages)
+	s.mux.HandleFunc("GET /ui/musicbrainz", s.musicbrainz)
 	s.mux.HandleFunc("GET /ui/presentations", s.presentations)
 	s.mux.HandleFunc("POST /ui/preview", s.preview)
 	s.mux.HandleFunc("POST /ui/publish", s.publish)
@@ -439,10 +443,21 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 		j.raw = raw
 		j.Torrent, _ = parseTorrent(raw)
 		j.MainFile = src.MainFile(in.Path, j.Torrent)
+		// Le plus gros fichier est une piste : c'est un album. MediaInfo lit
+		// alors tout le dossier (un objet par piste) et l'analyse se fait en
+		// Musique — sauf si le membre a déjà choisi une catégorie Musique.
+		j.Music = audioExt[extOf(j.MainFile)]
+		target, category := j.MainFile, in.Category
+		if j.Music {
+			target = in.Path
+			if !strings.HasPrefix(category, "musique") {
+				category = "musique-album"
+			}
+		}
 		j.Step = "mediainfo"
 		s.mu.Unlock()
 
-		mi, merr := src.MediaInfo(ctx, j.MainFile)
+		mi, merr := src.MediaInfo(ctx, target)
 		s.mu.Lock()
 		if merr != nil {
 			j.MediaErr = merr.Error()
@@ -451,12 +466,24 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 		j.Step = "analyse"
 		s.mu.Unlock()
 
-		analysis, aerr := c.Analyze(ctx, raw, map[string][]string{"category": {in.Category}, "mediainfo": {mi}})
+		fields := map[string][]string{"category": {category}, "mediainfo": {mi}}
+		out, aerr := c.Analyze(ctx, raw, fields)
+		// Catégorie choisie par Bifröst : on suit celle que Draupnirr propose
+		// d'après les pistes (FLAC, Album, OST).
+		if aerr == nil && category != in.Category {
+			var a analysis
+			if json.Unmarshal(out, &a) == nil && a.Music != nil && a.Music.SuggestedCategory != "" && a.Music.SuggestedCategory != category {
+				category = a.Music.SuggestedCategory
+				fields["category"] = []string{category}
+				out, aerr = c.Analyze(ctx, raw, fields)
+			}
+		}
 		s.mu.Lock()
 		if aerr != nil {
 			j.Error = aerr.Error()
 		}
-		j.Analysis, j.Done, j.Step = analysis, true, "prêt"
+		j.Category = category
+		j.Analysis, j.Done, j.Step = out, true, "prêt"
 		s.mu.Unlock()
 	}()
 	writeJSON(w, http.StatusAccepted, map[string]string{"job": j.ID})
@@ -592,6 +619,23 @@ func (s *server) tmdbImages(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	out, err := c.TMDBImages(r.Context(), q.Get("id"), q.Get("type"), q.Get("episode"))
+	s.proxyJSON(w, out, err)
+}
+
+// musicbrainz : éditions d'un album (artist, album, tracks) ou une édition (id).
+func (s *server) musicbrainz(w http.ResponseWriter, r *http.Request) {
+	c, err := s.client()
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	q := url.Values{}
+	for _, k := range []string{"artist", "album", "tracks", "id"} {
+		if v := strings.TrimSpace(r.URL.Query().Get(k)); v != "" {
+			q.Set(k, v)
+		}
+	}
+	out, err := c.MusicBrainz(r.Context(), q)
 	s.proxyJSON(w, out, err)
 }
 

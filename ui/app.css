@@ -195,13 +195,23 @@ main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
 
 /* ---- TMDB ---- */
 .tmdb{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
-.tmdb .c{display:flex;gap:12px;padding:10px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:var(--surface);text-align:left;height:auto;align-items:flex-start;font-weight:400;white-space:normal;min-height:100px}
+.tmdb .c{display:flex;justify-content:flex-start;gap:12px;padding:10px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:var(--surface);text-align:left;height:auto;align-items:flex-start;font-weight:400;white-space:normal;min-height:100px}
 .tmdb .c:hover{border-color:var(--fjord)}
 .tmdb .c.sel{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-soft)}
 .tmdb .c img{width:56px;height:84px;object-fit:cover;border-radius:6px;background:var(--sunk);flex:none}
 .tmdb .c b{display:block;font-weight:600}
 .tmdb .c .mut{font-size:12px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .tmdb .empty{grid-column:1/-1;color:var(--mut);padding:16px;text-align:center}
+/* ---- musique : éditions MusicBrainz, types, pistes ---- */
+.tmdb.mb .c img{width:64px;height:64px}
+.tmdb.mb .c .bdg{margin-top:6px}
+.types{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.types .lbl{margin:0 4px 0 0}
+.types button{height:28px;padding:0 10px;border-radius:999px;font:500 12px var(--mono);color:var(--mut)}
+.types button.on{background:var(--fjord-soft);color:var(--fjord);border-color:var(--fjord)}
+.tracks{list-style:none;margin:0;padding:0;font-size:13px;max-height:260px;overflow:auto;columns:2 280px;column-gap:24px}
+.tracks li{display:flex;gap:8px;break-inside:avoid;padding:1px 0}
+.tracks li .d{margin-left:auto;padding-left:8px}
 
 /* fiche */
 .chips{display:flex;flex-wrap:wrap;gap:6px}

@@ -37,7 +37,7 @@ Uploader proprement, c'est fastidieux : créer le `.torrent` avec le bon tag sou
 |---|---|
 | **Fichiers** | Un dossier sur ce poste ou sur ta seedbox, ou directement un torrent déjà dans ton client. Les cross-seeds sont regroupés, ce qui est déjà sur Draupnirr se masque d'un geste. |
 | **Œuvre et fiche** | Hachage (ou export du `.torrent` d'origine depuis qBittorrent, sans re-hachage), MediaInfo, recherche TMDB, puis la fiche : facettes lues dans le fichier en vert, déclarées en bleu, nom publié, manquants, verdict de Ratatosk. |
-| **Présentation** | Tes modèles du profil, variables remplies, images TMDB en un clic, barre d'outils BBCode/HTML, et l'**aperçu en temps réel rendu par Draupnirr**. |
+| **Présentation** | Tes modèles du profil (sinon celui du site pour la famille), variables remplies, images TMDB en un clic, barre d'outils BBCode/HTML, et l'**aperçu en temps réel rendu par Draupnirr**. |
 | **Publication** | Envoi par l'API, récupération du `.torrent` personnalisé, ajout au client sur les mêmes données. Tu seedes tout de suite. |
 
 ### Cross-seed en un clic
@@ -47,6 +47,12 @@ Ce que tu seedes déjà pour d'autres trackers et qui existe sur Draupnirr se re
 ### Lot : un dossier entier, sans y toucher
 
 Tu donnes un dossier, Bifröst passe chaque entrée au crible : déjà sur Draupnirr → ignorée ; sinon hachage, MediaInfo, œuvre TMDB, fiche calculée par Draupnirr, **publication seulement si tout est sûr** — œuvre certaine (titre ou titre original, même année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir » avec la raison, à finir dans l'onglet Uploader. Simulation par défaut, plafonds d'examen et de publication, filtre « vidéos seulement », arrêt propre, et une pause entre deux publications pour respecter l'API du site.
+
+### Musique : un album, une discographie
+
+Un dossier de pistes (FLAC, MP3, AAC, Ogg, Opus, WAV, APE, WavPack, AIFF) est reconnu comme un **album** : MediaInfo lit chaque piste, Draupnirr écrit le nom selon la nomenclature, compose le NFO avec la liste des pistes et propose la sous-catégorie. L'étape 2 cherche l'édition sur **MusicBrainz** (pochettes, « N pistes, comme ton dossier ») ; des tags Picard la donnent d'office. Source, type et team se déclarent à côté, et le modèle de présentation Musique — le tien, sinon celui du site — reçoit artiste, album, format et pistes.
+
+En lot, l'option **Musique** fait de chaque dossier d'album une release, à toute profondeur : une discographie de 14 albums donne 14 releases, et `CD1`, `Disc 2`… restent avec leur album. L'édition MusicBrainz n'est retenue que si elle est la seule à avoir le même titre, le même artiste et autant de pistes ; sinon l'album part nommé d'après ses tags, ou va « à revoir » s'il manque l'artiste, l'album, l'année ou la source (un `.log` ou un `.cue` vaut CD ; sinon la source par défaut du lot).
 
 <p align="center">
   <img src="docs/screens/fiche.jpg" alt="L'œuvre et la fiche technique : facettes lues dans MediaInfo, nom publié, verdict de Ratatosk" width="820">
@@ -117,7 +123,8 @@ make build       # agents Linux (amd64, arm64) puis binaire du poste
 ./bifrost --no-browser --listen 127.0.0.1:8790 --config /tmp/bifrost.json
 
 ./bifrost agent mktorrent --source DRAUPNIRR /chemin/release > release.torrent
-./bifrost agent mediainfo /chemin/release/film.mkv
+./bifrost agent mediainfo /chemin/release/film.mkv        # ou un dossier d'album : un objet par piste
+./bifrost agent albums /chemin/discographie              # les dossiers d'album que le lot musique publierait
 ./bifrost agent verify checksums.txt checksums.txt.sig   # une release est-elle signée par la clé de ce build ?
 ```
 

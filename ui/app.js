@@ -5,7 +5,7 @@ const human=n=>{const u=['o','Ko','Mo','Go','To'];let i=0;while(n>=1024&&i<4){n/
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ico=n=>`<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const msg=(kind,text,extra='')=>`<div class="msg ${kind}">${ico(kind==='ok'?'check':kind==='err'?'x':kind==='warn'?'alert':'info')}<div>${text}${extra}</div></div>`;
-const st={step:1,max:1,mode:'dir',hash:null,clientList:[],sort:{k:'name',d:1},job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:'',state:null};
+const st={step:1,max:1,mode:'dir',hash:null,clientList:[],sort:{k:'name',d:1},job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:'',state:null,music:false,mbPicked:null,mbResults:[],typesTouched:false};
 
 // ---- retours à l'écran : toasts et boutons occupés ----
 function toast(text,kind='info'){const t=document.createElement('div');t.className='toast '+kind;t.innerHTML=ico(kind==='ok'?'check':kind==='err'?'x':'info')+'<span>'+esc(text)+'</span>';$('toasts').append(t);setTimeout(()=>t.remove(),kind==='err'?8000:4000)}
@@ -140,20 +140,23 @@ function stage(step,err){const order=['hachage','mediainfo','analyse'];const i=o
   [...$('prep').querySelectorAll('.stages span')].forEach((s,k)=>{s.className=err&&k===i?'err':step==='prêt'||k<i?'done':k===i?'on':''});
   $('prog').parentElement.classList.toggle('indet',step!=='hachage'&&step!=='prêt'&&!err)}
 $('prepare').onclick=()=>run($('prepare'),async()=>{const r=await api('POST','/ui/prepare',{path:st.sel,category:$('category').value,hash:st.hash||''});st.hash=null;st.job=r.job;
-  $('prep').hidden=false;reveal($('prep'),'center');$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
+  $('prep').hidden=false;reveal($('prep'),'center');$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.mbPicked=null;st.typesTouched=false;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
   await poll()});
 function poll(){return new Promise((res,rej)=>{(async function tick(){try{const j=await api('GET','/ui/job/'+st.job);const[d,t]=j.progress;
     if(j.step==='hachage'){$('prog').style.width=(t?d/t*100:0)+'%';$('prepStep').textContent=t?human(d)+' / '+human(t):(j.exported?'export depuis le client…':'')}else{$('prog').style.width='100%';$('prepStep').textContent=j.step==='mediainfo'?'Lecture des pistes…':j.step==='analyse'?'Analyse par Draupnirr…':''}
     stage(j.step,!!j.error);
     if(!j.done){setTimeout(tick,500);return}
     if(j.error){$('prepStep').innerHTML='<span class="warn-text" style="color:var(--err)">'+esc(j.error)+'</span>';res();return}
-    st.miErr=j.mediainfo_error||'';st.analysis=j.analysis;$('prep').hidden=true;go(2);showAnalysis(j.analysis);
+    st.miErr=j.mediainfo_error||'';st.analysis=j.analysis;st.torrentName=j.torrent.name;$('prep').hidden=true;
+    if(j.category)$('category').value=j.category;musicMode(!!j.analysis.music);go(2);
+    if(st.music){musicStart(j.analysis);res();return}
+    showAnalysis(j.analysis);
     $('q').value=j.analysis.clean_title||j.torrent.name;$('kind').value=j.analysis.guessed_type==='tv'?'tv':'movie';$('year').value=j.analysis.year||'';$('work_title').value=j.analysis.clean_title||'';$('episode').value='';$('episode_title').value='';
     $('tmdb').innerHTML='';search();res()}catch(e){rej(e)}})()})}
 
 // ---- étape 2 : œuvre et fiche ----
 function showAnalysis(a){const n=a.nomenclature;
-  $('warnings').innerHTML=(st.miErr?msg('warn','MediaInfo : '+esc(st.miErr)+' — les facettes restent déclarées, Ratatosk les vérifiera.'):'')+(a.warnings||[]).map(w=>msg('warn',esc(w))).join('')+(a.bot||[]).map(b=>msg(b.level==='error'?'err':'warn','Ratatosk : '+esc(b.message))).join('')||msg('ok','Aucun avertissement : Ratatosk n\'a rien à redire.');
+  $('warnings').innerHTML=(st.miErr?msg('warn','MediaInfo : '+esc(st.miErr)+' — les facettes restent déclarées, Ratatosk les vérifiera.'):'')+(a.warnings||[]).map(w=>msg('warn',esc(w))).join('')+botMsgs(a)||msg('ok','Aucun avertissement : Ratatosk n\'a rien à redire.');
   if(!n){$('built').textContent=a.name;$('chips').innerHTML='';$('legend').hidden=true;$('facets').innerHTML='';$('missing').textContent='';return}
   $('built').textContent=n.built_name||a.name;$('missing').textContent=n.missing?.length?'Manque : '+n.missing.join(', ')+(n.missing_title?' · titre de l\'œuvre':''):(n.missing_title?'Choisis l\'œuvre (titre)':'');
   $('chips').innerHTML=Object.entries(n.facets||{}).map(([k,v])=>`<span class="chip ${v.origin}" title="${esc(k)}">${esc(v.value)}</span>`).join('')+(n.media?Object.values(n.media).filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join(''):'');$('legend').hidden=!$('chips').children.length;
@@ -161,8 +164,11 @@ function showAnalysis(a){const n=a.nomenclature;
     $('facets').innerHTML=decl.map(f=>f==='group'?`<label>Team<input data-f="group" value="${esc(n.facets?.group?.value||'')}"></label>`:`<label>${f==='source'?'Source':'Édition'}<select data-f="${f}"><option value="">—</option>${(voc[f]||[]).map(t=>`<option ${n.facets?.[f]?.value===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`).join('');
     $('facets').querySelectorAll('[data-f]').forEach(el=>el.onchange=reanalyze)}}
 function sheet(){const facets={};$('facets').querySelectorAll('[data-f]').forEach(el=>{if(el.value)facets[el.dataset.f]=el.value});
+  // Album : le type n'est envoyé qu'une fois touché (absent = types de l'édition MusicBrainz, vide = aucun).
+  if(st.music){if(st.typesTouched)facets.type=[...$('types').querySelectorAll('.on')].map(b=>b.dataset.t).join(',');
+    return{category:$('category').value,facets,musicbrainz_id:st.mbPicked?.id,release_name:st.analysis?.music?.built_name||undefined}}
   return{category:$('category').value,facets,work_title:$('work_title').value,year:$('year').value,episode:$('episode').value,episode_title:$('episode_title').value,tmdb_id:st.picked?.id,tmdb_type:st.picked?($('kind').value):undefined}}
-async function reanalyze(){$('builtBox').classList.add('loading');try{const a=await api('POST','/ui/analyze',{job:st.job,...sheet()});st.analysis=a;showAnalysis(a)}catch(e){toast('Analyse : '+e.message,'err')}finally{$('builtBox').classList.remove('loading')}}
+async function reanalyze(){$('builtBox').classList.add('loading');try{const a=await api('POST','/ui/analyze',{job:st.job,...sheet()});st.analysis=a;st.music&&a.music?showMusic(a):showAnalysis(a)}catch(e){toast('Analyse : '+e.message,'err')}finally{$('builtBox').classList.remove('loading')}}
 ['work_title','year','episode','episode_title'].forEach(id=>$(id).onchange=reanalyze);
 
 async function search(){$('tmdb').innerHTML='<div class="empty">Recherche sur TMDB…</div>';
@@ -176,11 +182,62 @@ async function images(){const r=await api('GET','/ui/tmdb-images?id='+st.picked.
   $('imgs').innerHTML=st.images.map((im,i)=>`<button type="button" data-i="${i}" title="Ajouter aux captures"><img src="${esc(im.thumb)}" alt="" loading="lazy"></button>`).join('');
   [...$('imgs').children].forEach(im=>im.onclick=()=>{im.classList.toggle('sel');const u=st.images[im.dataset.i].url;st.captures=im.classList.contains('sel')?[...st.captures,u]:st.captures.filter(x=>x!==u);if(im.classList.contains('sel')&&st.step===3)insert(TAGS[$('format').value].img(u)[0]+'\n')})}
 
+// ---- étape 2, version album (docs/25 §6) ----
+function musicMode(on){st.music=on;$('videoWork').hidden=on;$('videoFields').hidden=on;$('musicWork').hidden=!on;$('types').hidden=!on;$('tracks').hidden=!on;
+  $('p2title').textContent=on?'L\'album et la fiche technique':'L\'œuvre et la fiche technique'}
+// Ratatosk parle en block / warn / info.
+function botMsgs(a,skip=[]){return(a.bot||[]).filter(b=>!skip.includes(b.code)).map(b=>msg(b.level==='block'?'err':b.level==='warn'?'warn':'info','Ratatosk : '+esc(b.message))).join('')}
+function musicStart(a){const m=a.music;$('types').innerHTML='';$('tracks').innerHTML='';$('mb').innerHTML='';
+  // Tags Picard : l'édition est déjà connue, la grille la montre sélectionnée.
+  if(m.musicbrainz_id)st.mbPicked={id:m.musicbrainz_id,tags:true};
+  showMusic(a);$('mbArtist').value=m.artist||'';$('mbAlbum').value=m.album||'';
+  if(m.album)mbSearch();else $('mb').innerHTML='<div class="empty">Pas de tag « album » dans les pistes : tape l\'artiste et l\'album pour chercher l\'édition.</div>'}
+function showMusic(a){const m=a.music,voc=m.vocabulary||{};
+  $('warnings').innerHTML=(st.miErr?msg('warn','MediaInfo : '+esc(st.miErr)):'')+(m.probe_error?msg('err',esc(m.probe_error)):'')
+    +(!m.sheet&&!m.probe_error?msg('warn','Pistes non lues : sans rapport MediaInfo, la release garde le nom du dossier et un NFO est à joindre.'):'')
+    +(m.rip_log?msg('info','Un .log ou un .cue accompagne les pistes : source CD déduite.'):'')
+    +(st.mbPicked?.tags&&st.mbPicked.id===m.musicbrainz_id?msg('info','Édition MusicBrainz lue dans les tags des pistes.'):'')
+    +(m.issues||[]).map(i=>msg('warn',esc(i.message))).join('')+(a.warnings||[]).map(w=>msg('warn',esc(w))).join('')
+    // Les espaces du dossier ne comptent pas : c'est le nom calculé qui sera publié.
+    +botMsgs(a,m.built_name?['naming_spaces']:[])||msg('ok','Aucun avertissement : Ratatosk n\'a rien à redire.');
+  $('built').textContent=m.built_name||st.torrentName||a.name;$('legend').hidden=true;
+  $('missing').textContent=m.missing?.length?'Manque : '+m.missing.join(', ')+' — sans quoi la release garde le nom de son dossier.':'';
+  $('chips').innerHTML=[m.format_label,m.source,...(m.types||[]),m.discs>1?m.discs+' disques':'',m.track_count?m.track_count+' pistes':'',m.duration,m.label,m.year].filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join('');
+  $('tracks').innerHTML=(m.tracks||[]).map((t,i)=>`<li><span class="mut">${m.discs>1?t.disc+'-':''}${String(t.number??i+1).padStart(2,'0')}</span><span>${esc(t.title)}</span><span class="mut d">${esc(t.duration)}</span></li>`).join('');
+  if(!$('facets').children.length){
+    $('facets').innerHTML=`<label>Source<select data-f="source"><option value="">—</option>${(voc.source||[]).map(s=>`<option ${m.source===s?'selected':''}>${esc(s)}</option>`).join('')}</select></label><label>Team<input data-f="group" value="${esc(m.group||'')}"></label>`;
+    $('facets').querySelectorAll('[data-f]').forEach(el=>el.onchange=reanalyze)}
+  $('types').innerHTML='<span class="lbl" title="Pré-rempli depuis l\'édition MusicBrainz">Type</span>'+(voc.type||[]).map(t=>{const on=(m.types||[]).includes(t);return`<button type="button" data-t="${esc(t)}" class="${on?'on':''}" aria-pressed="${on}">${esc(t)}</button>`}).join('')}
+$('types').addEventListener('click',e=>{const b=e.target.closest('[data-t]');if(!b)return;b.setAttribute('aria-pressed',b.classList.toggle('on'));st.typesTouched=true;reanalyze()});
+async function mbSearch(){const m=st.analysis?.music||{};$('mb').innerHTML='<div class="empty">Recherche sur MusicBrainz…</div>';
+  const q=new URLSearchParams({artist:$('mbArtist').value,album:$('mbAlbum').value});if(m.track_count)q.set('tracks',m.track_count);
+  const r=await api('GET','/ui/musicbrainz?'+q).catch(e=>({results:[],error:e.message}));st.mbResults=r.results||[];
+  $('mb').innerHTML=st.mbResults.map((x,i)=>`<button type="button" class="c ${st.mbPicked?.id===x.id?'sel':''}" data-i="${i}"><img src="${esc(x.cover_url||'')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><div><b>${esc(x.title)}${x.year?' <span class="mut">('+x.year+')</span>':''}</b><div class="mut">${esc([x.artist,x.label,x.country,x.media,x.disambiguation].filter(Boolean).join(' · '))}</div>${x.tracks_match?`<span class="bdg seed">${x.track_count} pistes, comme ton dossier</span>`:`<span class="bdg x">${x.track_count} pistes</span>`}</div></button>`).join('')
+    ||`<div class="empty">${r.error?esc(r.error):'Aucune édition sur MusicBrainz — le nom viendra des tags des pistes.'}</div>`;
+  [...$('mb').querySelectorAll('.c')].forEach(d=>d.onclick=()=>{const x=st.mbResults[d.dataset.i];const off=st.mbPicked?.id===x.id&&!st.mbPicked.tags;
+    [...$('mb').children].forEach(c=>c.classList.remove('sel'));if(off)st.mbPicked=null;else{d.classList.add('sel');st.mbPicked=x}reanalyze()})}
+onSubmit($('mbForm'),()=>run($('mbSearch'),mbSearch));
+
 // ---- étape 3 : présentation ----
 $('toPres').onclick=()=>run($('toPres'),async()=>{if(!st.templates.length){const c=await api('GET','/ui/presentations').catch(()=>({templates:[]}));st.templates=c.templates||[]}
-  $('tpl').innerHTML='<option value="">— aucun (description libre) —</option>'+st.templates.map((t,i)=>`<option value="${i}" ${t.is_default&&(!t.family||t.family===$('category').value.split('-')[0])?'selected':''}>${esc(t.name)}${t.family?' · '+esc(t.family):''}</option>`).join('');
-  go(3);if(!$('description').value)regen();fillVars();schedulePreview()});
-function vars(){const a=st.analysis||{},n=a.nomenclature||{},f=n.facets||{},v=k=>f[k]?.value||'',m=n.media||{},fmt=$('format').value,p=st.picked||{};
+  const def=presDefault($('category').value.split('-')[0]);
+  $('tpl').innerHTML='<option value="">— aucun (description libre) —</option>'+st.templates.map((t,i)=>`<option value="${i}" ${t===def?'selected':''}>${esc(t.name)}${t.site?' · Draupnirr':''}${t.family?' · '+esc(t.family):''}</option>`).join('');
+  $('capsBox').hidden=st.music;go(3);if(!$('description').value)regen();fillVars();schedulePreview()});
+// Le modèle par défaut, comme presDefault() du site (docs/25 §4.2) : celui du membre pour la famille, puis
+// toutes catégories ; s'il n'a AUCUN modèle pour la famille, celui du site. Des modèles sans défaut = à la main.
+function presDefault(fam){const c=st.templates.filter(t=>!t.family||t.family===fam),own=c.filter(t=>!t.site);
+  if(own.length)return own.find(t=>t.is_default&&t.family===fam)||own.find(t=>t.is_default&&!t.family)||null;
+  const site=c.filter(t=>t.site&&t.family===fam);return site.find(t=>t.is_default)||site[0]||null}
+// {{pistes}} : liste numérotée selon le format du modèle.
+function pistes(tracks,fmt){const it=(tracks||[]).map(t=>(fmt==='html'?esc(t.title):t.title)+(t.duration?' ('+t.duration+')':''));
+  return!it.length?'':fmt==='html'?'<ol><li>'+it.join('</li><li>')+'</li></ol>':'[list=1]\n[*]'+it.join('\n[*]')+'\n[/list]'}
+function vars(){const v=videoVars(),a=st.analysis||{},al=a.music;if(!al)return v;
+  // Album (docs/25 §6.7) : titre, affiche et durée aussi, pour qu'un modèle film reste lisible.
+  return{...v,titre:al.album||'',annee:String(al.year||''),type:'Album',affiche:al.cover_url||'',nom_release:al.built_name||a.name||'',
+    source:al.source||'',team:al.group||'',duree:al.duration||'',nfo:al.nfo||'',tags:(al.tags||[]).join(', '),episode:'',titre_episode:'',
+    artiste:al.artist||'',album:al.album||'',label:al.label||'',format_audio:al.format_label||'',pistes:pistes(al.tracks,$('format').value),
+    nb_pistes:String(al.track_count||''),musicbrainz_url:al.musicbrainz_url||''}}
+function videoVars(){const a=st.analysis||{},n=a.nomenclature||{},f=n.facets||{},v=k=>f[k]?.value||'',m=n.media||{},fmt=$('format').value,p=st.picked||{};
   const caps=st.captures.map(u=>fmt==='html'?`<img src="${u}" alt="">`:`[img]${u}[/img]`).join('\n');
   return{titre:p.title||a.clean_title||'',annee:$('year').value,type:$('kind').value==='tv'?'Série':'Film',synopsis:p.overview||'',affiche:p.poster_url||'',tmdb_url:p.id?`https://www.themoviedb.org/${$('kind').value}/${p.id}`:'',nom_release:n.built_name||a.name||'',taille:a.size_human||'',nb_fichiers:String(a.file_count||''),fichiers:(a.files||[]).map(x=>`${x.path} (${x.size_human})`).join('\n'),episode:$('episode').value,titre_episode:$('episode_title').value,tags:(a.suggested_tags||[]).join(', '),source:v('source'),edition:v('edition'),team:v('group'),langues:v('languages'),resolution:v('resolution'),codec_video:v('video_codec'),profondeur:v('bit_depth'),hdr:v('hdr'),codec_audio:v('audio_codec'),canaux:v('channels'),duree:m.duration||'',debit:m.bitrate||'',sous_titres:m.subtitles||'',mediainfo:'',nfo:n.nfo||'',captures:caps,uploadeur:$('anonymous').checked?'Anonyme':(st.me?.name||''),date:new Date().toLocaleDateString('fr-FR')}}
 function render(body,d){let out=body;for(;;){const s=out.indexOf('{{#');if(s<0)break;const e=out.indexOf('}}',s);const name=out.slice(s+3,e);const close='{{/'+name+'}}';const c=out.indexOf(close,s);if(c<0)break;out=out.slice(0,s)+(d[name]?out.slice(e+2,c):'')+out.slice(c+close.length)}
@@ -231,8 +288,10 @@ $('editor').querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{$('editor
 
 // ---- étape 4 : publication ----
 $('publish').onclick=()=>run($('publish'),async()=>{
-  const r=await api('POST','/ui/publish',{job:st.job,category:$('category').value,description:$('description').value,description_format:$('format').value,nfo_text:$('nfo').value,
-    meta:{...sheet(),poster_url:st.picked?.poster_url,synopsis:st.picked?.overview,tags:(st.analysis?.suggested_tags||[])}});
+  const al=st.analysis?.music;
+  // Album : le serveur reprend nom, NFO, pochette, titre et tags de la fiche et de l'édition.
+  const meta=al?{musicbrainz_id:st.mbPicked?.id||al.musicbrainz_id||undefined,facets:sheet().facets}:{...sheet(),poster_url:st.picked?.poster_url,synopsis:st.picked?.overview,tags:(st.analysis?.suggested_tags||[])};
+  const r=await api('POST','/ui/publish',{job:st.job,category:$('category').value,description:$('description').value,description_format:$('format').value,nfo_text:$('nfo').value,meta});
   $('publish').disabled=true;$('publish').classList.remove('busy');
   $('pubTitle').textContent=r.result.awaiting_validation?'Publié, en attente de Ratatosk':'Publié au catalogue';
   $('pub').innerHTML=msg('ok',r.result.awaiting_validation?'<b>En attente de validation Ratatosk</b> — garde le seed, la release passe au catalogue dès qu\'elle est vérifiée.':'<b>Au catalogue</b> — la release est visible par les membres.')
@@ -240,7 +299,7 @@ $('publish').onclick=()=>run($('publish'),async()=>{
     +(r.client_error?msg('warn','Client torrent : '+esc(r.client_error)):'')
     +(r.saved?msg('ok','.torrent personnalisé enregistré : <span class="mono">'+esc(r.saved)+'</span>'+(r.client_added?'':' — ajoute-le à ton client sur les mêmes données.')):msg('warn',esc(r.download_error||'Le .torrent personnalisé n\'a pas pu être récupéré.')));
   $('pubLink').href=r.url;go(4);});
-$('again').onclick=()=>{st.job=null;st.analysis=null;st.picked=null;st.captures=[];st.images=[];st.sel=null;st.hash=null;st.max=1;
+$('again').onclick=()=>{st.job=null;st.analysis=null;st.picked=null;st.mbPicked=null;st.typesTouched=false;musicMode(false);$('mb').innerHTML='';st.captures=[];st.images=[];st.sel=null;st.hash=null;st.max=1;
   $('facets').innerHTML='';$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('tmdb').innerHTML='';$('pub').innerHTML='';$('publish').disabled=false;$('prepare').disabled=true;
   go(1);if(st.mode==='client')fromClient();else browse($('path').value).catch(e=>toast(e.message,'err'))};
 
@@ -278,7 +337,7 @@ st.batchTimer=null;
 function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').value||'';
   const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
   if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
-  batchPoll()}
+  batchMode();batchPoll()}
 const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
 function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){return}
   $('batchSummary').hidden=false;
@@ -288,10 +347,14 @@ function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){retur
   $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…':(j.done?'Terminé.':''));
   $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'');
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
-  $('batchList').innerHTML='<div class="b h"><span>Release</span><span class="r">Taille</span><span>État</span><span>Détail</span></div>'+rows.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc(r.built||r.tmdb||'')}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('')}
+  $('batchList').innerHTML='<div class="b h"><span>Release</span><span class="r">Taille</span><span>État</span><span>Détail</span></div>'+rows.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('')}
 async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
   if(!dry&&!confirm('Publier pour de vrai ce qui est sûr ? Les releases douteuses resteront « à revoir ».'))return;
-  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value});
+  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value});
   toast(dry?'Simulation lancée':'Lot lancé','ok');batchPoll()});
+// Musique et « vidéos seulement » s'excluent ; les catégories film/série ne servent pas aux albums.
+function batchMode(){const m=$('batchMusic').checked;$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m}
+$('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked=false;batchMode()};
+$('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
 $('batchStop').onclick=()=>api('POST','/ui/batch/stop').then(()=>toast('Arrêt demandé après la release en cours','info'));

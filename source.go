@@ -18,6 +18,8 @@ type fileSource interface {
 	Home() string
 	// Check : les fichiers du torrent existent-ils sous root, à la bonne taille ? (cross-seed)
 	Check(ctx context.Context, root string, t *Torrent) ([]string, error)
+	// Albums : les dossiers d'album sous root, à toute profondeur (lot musique).
+	Albums(ctx context.Context, root string) ([]DirEntry, error)
 }
 
 type localSource struct{}

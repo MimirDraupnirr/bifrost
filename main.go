@@ -80,7 +80,7 @@ func main() {
 // sur stdout (JSON ou .torrent), progression et erreurs sur stderr.
 func agent(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage : bifrost agent <mktorrent|mediainfo|ls|version> …")
+		fmt.Fprintln(os.Stderr, "usage : bifrost agent <mktorrent|mediainfo|ls|albums|version> …")
 		return 2
 	}
 	switch args[0] {
@@ -125,6 +125,18 @@ func agent(args []string) int {
 			return 1
 		}
 		return printJSON(entries)
+	case "albums":
+		// bifrost agent albums <dossier> — les dossiers d'album (lot musique), en un seul appel.
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent albums <dossier>")
+			return 2
+		}
+		albums, err := findAlbums(args[1])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return printJSON(albums)
 	case "check":
 		// bifrost agent check <root> — lit un torrent (JSON de Torrent) sur stdin,
 		// répond {"missing":[…]} : l'arborescence est-elle sur ce disque ?
@@ -140,7 +152,7 @@ func agent(args []string) int {
 		return printJSON(map[string]any{"missing": checkFiles(args[1], &t)})
 	case "mediainfo":
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage : bifrost agent mediainfo <fichier>")
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent mediainfo <fichier|dossier>")
 			return 2
 		}
 		out, err := mediaInfo(context.Background(), args[1])

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ type batchRow struct {
 	Category string `json:"category,omitempty"`
 	Built    string `json:"built,omitempty"`
 	TMDB     string `json:"tmdb,omitempty"`
+	Edition  string `json:"edition,omitempty"` // édition MusicBrainz d'un album
 	ID       string `json:"id,omitempty"`
 	URL      string `json:"url,omitempty"`
 }
@@ -36,6 +38,7 @@ type batchJob struct {
 	Max        int         `json:"max"`
 	Limit      int         `json:"limit"`
 	OnlyVideo  bool        `json:"only_video"`
+	Music      bool        `json:"music"`
 	Running    bool        `json:"running"`
 	Done       bool        `json:"done"`
 	Error      string      `json:"error,omitempty"`
@@ -47,6 +50,7 @@ type batchJob struct {
 	cancel     context.CancelFunc
 	catFilm    string
 	catTV      string
+	albumSrc   string // source d'un album quand rien ne l'indique (ni .log, ni .cue)
 	publishGap time.Duration
 }
 
@@ -56,28 +60,29 @@ type batchOpts struct {
 	Max       int    `json:"max"`
 	Limit     int    `json:"limit"`      // releases examinées au plus (0 = toutes)
 	OnlyVideo bool   `json:"only_video"` // ignorer ce qui n'est pas une vidéo (ebooks, logiciels, musique)
-	CatFilm   string `json:"category_film"`
-	CatTV     string `json:"category_tv"`
+	// Musique : chaque dossier de pistes est un album (CD1/CD2 regroupés), une release par album.
+	Music       bool   `json:"music"`
+	MusicSource string `json:"music_source"` // WEB, CD, VINYL ; vide = « à revoir » faute de source
+	CatFilm     string `json:"category_film"`
+	CatTV       string `json:"category_tv"`
 }
 
 // analysis : la partie de la réponse de /api/upload/analyze que le lot lit.
 type analysis struct {
-	OK          bool     `json:"ok"`
-	Name        string   `json:"name"`
-	InfoHash    string   `json:"infohash"`
-	CleanTitle  string   `json:"clean_title"`
-	Year        any      `json:"year"`
-	GuessedType string   `json:"guessed_type"`
-	Warnings    []string `json:"warnings"`
-	Executable  bool     `json:"executable"`
-	SizeHuman   string   `json:"size_human"`
-	FileCount   int      `json:"file_count"`
-	Tags        []string `json:"suggested_tags"`
-	Bot         []struct {
-		Level   string `json:"level"`
-		Message string `json:"message"`
-	} `json:"bot"`
+	OK           bool          `json:"ok"`
+	Name         string        `json:"name"`
+	InfoHash     string        `json:"infohash"`
+	CleanTitle   string        `json:"clean_title"`
+	Year         any           `json:"year"`
+	GuessedType  string        `json:"guessed_type"`
+	Warnings     []string      `json:"warnings"`
+	Executable   bool          `json:"executable"`
+	SizeHuman    string        `json:"size_human"`
+	FileCount    int           `json:"file_count"`
+	Tags         []string      `json:"suggested_tags"`
+	Bot          []issue       `json:"bot"`
 	Nomenclature *nomenclature `json:"nomenclature"`
+	Music        *musicBlock   `json:"music"`
 }
 
 type facetValue struct {
@@ -160,8 +165,10 @@ func pickWork(a *analysis, results []tmdbResult) (*tmdbResult, string) {
 	return nil, "aucune œuvre TMDB avec le même titre et la même année"
 }
 
-// decide : publiable ? Une seule raison suffit à envoyer en revue.
-func decide(a *analysis, pick *tmdbResult, pickReason string) (ok bool, reason string) {
+// analysisBlocker : ce qui envoie en revue quelle que soit la famille —
+// analyse refusée, doublon, exécutable, réserve de Ratatosk (sauf `ignore`).
+// Ratatosk parle en block / warn / info (ReviewIssue) : seul info laisse passer.
+func analysisBlocker(a *analysis, ignore ...string) (ok bool, reason string) {
 	if !a.OK {
 		return false, "analyse refusée par Draupnirr"
 	}
@@ -172,9 +179,18 @@ func decide(a *analysis, pick *tmdbResult, pickReason string) (ok bool, reason s
 		return false, "contenu exécutable : rapport VirusTotal à fournir à la main"
 	}
 	for _, b := range a.Bot {
-		if b.Level == "error" || b.Level == "warning" {
+		if b.Level != "info" && !slices.Contains(ignore, b.Code) {
 			return false, "Ratatosk : " + b.Message
 		}
+	}
+	return true, ""
+}
+
+// decide : publiable ? Une seule raison suffit à envoyer en revue.
+func decide(a *analysis, pick *tmdbResult, pickReason string) (ok bool, reason string) {
+	// Espaces dans le nom du dossier : sans objet, c'est le nom CALCULÉ qui sera publié.
+	if ok, why := analysisBlocker(a, "naming_spaces"); !ok {
+		return false, why
 	}
 	n := a.Nomenclature
 	if n == nil {
@@ -207,9 +223,13 @@ func (s *server) batchStart(opts batchOpts) (*batchJob, error) {
 	if opts.CatTV == "" {
 		opts.CatTV = "series-serie-tv"
 	}
+	source := strings.ToUpper(strings.TrimSpace(opts.MusicSource))
+	if source != "" && !slices.Contains([]string{"WEB", "CD", "VINYL"}, source) {
+		return nil, errors.New("source d'album inconnue : " + opts.MusicSource + " (WEB, CD ou VINYL)")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &batchJob{Root: opts.Root, DryRun: opts.DryRun, Max: opts.Max, Limit: opts.Limit, OnlyVideo: opts.OnlyVideo, Running: true, Started: time.Now(),
-		cancel: cancel, catFilm: opts.CatFilm, catTV: opts.CatTV, publishGap: 7 * time.Second}
+	j := &batchJob{Root: opts.Root, DryRun: opts.DryRun, Max: opts.Max, Limit: opts.Limit, OnlyVideo: opts.OnlyVideo && !opts.Music, Music: opts.Music,
+		Running: true, Started: time.Now(), cancel: cancel, catFilm: opts.CatFilm, catTV: opts.CatTV, albumSrc: source, publishGap: 7 * time.Second}
 	s.batch = j
 	go s.runBatch(ctx, j)
 	return j, nil
@@ -230,6 +250,15 @@ func (s *server) batchSnapshot() *batchJob {
 	return &cp
 }
 
+// batchEnv : ce qui ne change pas d'une release à l'autre du lot.
+type batchEnv struct {
+	sourceTag string
+	clientCfg ClientConfig
+	remote    bool
+	templates []presTemplate
+	uploader  string
+}
+
 func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	finish := func(err error) {
 		s.mu.Lock()
@@ -246,15 +275,21 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	}
 	src := s.source()
 	s.mu.Lock()
-	sourceTag, _ := s.me["source_tag"].(string)
-	clientCfg := s.cfg.Client
-	remote := s.cfg.Source == "ssh"
+	env := batchEnv{clientCfg: s.cfg.Client, remote: s.cfg.Source == "ssh"}
+	env.sourceTag, _ = s.me["source_tag"].(string)
+	env.uploader, _ = s.me["name"].(string)
 	s.mu.Unlock()
-	if sourceTag == "" {
-		sourceTag = "DRAUPNIRR"
+	if env.sourceTag == "" {
+		env.sourceTag = "DRAUPNIRR"
 	}
 
-	entries, err := src.List(ctx, j.Root)
+	// Les entrées du dossier ; en musique, ses albums à toute profondeur.
+	var entries []DirEntry
+	if j.Music {
+		entries, err = src.Albums(ctx, j.Root)
+	} else {
+		entries, err = src.List(ctx, j.Root)
+	}
 	if err != nil {
 		finish(err)
 		return
@@ -294,7 +329,11 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	s.mu.Unlock()
 
 	// 2. Une release à la fois.
-	templates := s.loadTemplates(ctx, c)
+	env.templates = s.loadTemplates(ctx, c)
+	run := s.batchOne
+	if j.Music {
+		run = s.batchAlbum
+	}
 	examined := 0
 	for _, r := range j.Rows {
 		if ctx.Err() != nil {
@@ -309,15 +348,13 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		}
 		examined++
 		if j.Max > 0 && j.Published >= j.Max {
-			s.mu.Lock()
-			r.Detail = "plafond du lot atteint, non traité"
-			s.mu.Unlock()
+			s.setDetail(r, "plafond du lot atteint, non traité")
 			continue
 		}
 		s.mu.Lock()
 		r.Status, r.Detail = "en cours", "hachage"
 		s.mu.Unlock()
-		status, detail := s.batchOne(ctx, c, src, j, r, sourceTag, clientCfg, remote, templates)
+		status, detail := run(ctx, c, src, j, r, env)
 		s.mu.Lock()
 		r.Status, r.Detail = status, detail
 		switch status {
@@ -334,28 +371,23 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	finish(nil)
 }
 
-func (s *server) loadTemplates(ctx context.Context, c *Client) map[string]presTemplate {
-	out := map[string]presTemplate{}
+func (s *server) setDetail(r *batchRow, detail string) {
+	s.mu.Lock()
+	r.Detail = detail
+	s.mu.Unlock()
+}
+
+// loadTemplates : les modèles du membre, puis ceux du site (`site: true`).
+func (s *server) loadTemplates(ctx context.Context, c *Client) []presTemplate {
 	raw, err := c.Presentations(ctx)
 	if err != nil {
-		return out
+		return nil
 	}
 	var resp struct {
 		Templates []presTemplate `json:"templates"`
 	}
-	if json.Unmarshal(raw, &resp) != nil {
-		return out
-	}
-	for _, t := range resp.Templates {
-		if t.IsDefault {
-			key := "*"
-			if t.Family != nil {
-				key = *t.Family
-			}
-			out[key] = t
-		}
-	}
-	return out
+	_ = json.Unmarshal(raw, &resp)
+	return resp.Templates
 }
 
 type presTemplate struct {
@@ -363,51 +395,88 @@ type presTemplate struct {
 	Family    *string `json:"family"`
 	Format    string  `json:"format"`
 	IsDefault bool    `json:"is_default"`
+	Site      bool    `json:"site"`
 	Body      string  `json:"body"`
 }
 
-// batchOne : prépare une release et décide. Renvoie (statut, détail).
-func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, sourceTag string, clientCfg ClientConfig, remote bool, templates map[string]presTemplate) (string, string) {
+// pickTemplate : le défaut du membre pour la famille, puis son défaut
+// toutes catégories, sinon le modèle du site de la famille (docs/25 §4.2).
+// Comme presDefault() du site, à un écart près : un lot ne rédige pas à la
+// main, donc un membre qui a des modèles sans défaut reçoit celui du site.
+func pickTemplate(templates []presTemplate, family string) *presTemplate {
+	var own, ownAll, site *presTemplate
+	for i := range templates {
+		t := &templates[i]
+		fam := ""
+		if t.Family != nil {
+			fam = *t.Family
+		}
+		switch {
+		case t.Site:
+			if fam == family && (site == nil || (t.IsDefault && !site.IsDefault)) {
+				site = t
+			}
+		case t.IsDefault && fam == family && own == nil:
+			own = t
+		case t.IsDefault && fam == "" && ownAll == nil:
+			ownAll = t
+		}
+	}
+	for _, t := range []*presTemplate{own, ownAll, site} {
+		if t != nil {
+			return t
+		}
+	}
+	return nil
+}
+
+// describe : le modèle choisi, rendu avec les variables de son format ;
+// sans aucun modèle, une présentation sobre.
+func describe(templates []presTemplate, family string, data func(format string) map[string]string, fallback string) (string, string) {
+	if t := pickTemplate(templates, family); t != nil {
+		return renderTemplate(t.Body, data(t.Format)), t.Format
+	}
+	return renderTemplate(fallback, data("bbcode")), "bbcode"
+}
+
+func today() string { return time.Now().Format("02/01/2006") }
+
+// batchTorrent : le .torrent de l'entrée (cache ou hachage), progression dans la ligne.
+func (s *server) batchTorrent(ctx context.Context, src fileSource, r *batchRow, sourceTag string) ([]byte, *Torrent, error) {
+	raw, cached, err := s.makeTorrentCached(ctx, src, r.Path, sourceTag, r.Size, func(done, total int64) {
+		if total > 0 {
+			s.setDetail(r, fmt.Sprintf("hachage %d %%", done*100/total))
+		}
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if cached {
+		s.setDetail(r, "torrent repris du cache")
+	}
+	t, err := parseTorrent(raw)
+	return raw, t, err
+}
+
+// batchOne : prépare une release vidéo et décide. Renvoie (statut, détail).
+func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, env batchEnv) (string, string) {
 	if j.OnlyVideo {
 		if ext, err := mainExtension(ctx, src, r.Path); err == nil && !videoExt[ext] {
 			return "ignoré", "pas une vidéo (." + ext + ")"
 		}
 	}
-	raw, cached, err := s.makeTorrentCached(ctx, src, r.Path, sourceTag, r.Size, func(done, total int64) {
-		s.mu.Lock()
-		if total > 0 {
-			r.Detail = fmt.Sprintf("hachage %d %%", done*100/total)
-		}
-		s.mu.Unlock()
-	})
+	raw, t, err := s.batchTorrent(ctx, src, r, env.sourceTag)
 	if err != nil {
 		return "erreur", err.Error()
 	}
-	if cached {
-		s.mu.Lock()
-		r.Detail = "torrent repris du cache"
-		s.mu.Unlock()
-	}
-	t, err := parseTorrent(raw)
-	if err != nil {
-		return "erreur", err.Error()
-	}
-	s.mu.Lock()
-	r.Detail = "mediainfo"
-	s.mu.Unlock()
+	s.setDetail(r, "mediainfo")
 	mi, _ := src.MediaInfo(ctx, src.MainFile(r.Path, t))
 
 	// Première analyse : catégorie devinée depuis le type.
-	s.mu.Lock()
-	r.Detail = "analyse"
-	s.mu.Unlock()
-	first, err := c.Analyze(ctx, raw, map[string][]string{"category": {j.catFilm}, "mediainfo": {mi}})
-	if err != nil {
-		return "erreur", err.Error()
-	}
+	s.setDetail(r, "analyse")
 	var a analysis
-	if err := json.Unmarshal(first, &a); err != nil {
-		return "erreur", "analyse illisible : " + err.Error()
+	if err := analyzeInto(ctx, c, raw, map[string][]string{"category": {j.catFilm}, "mediainfo": {mi}}, &a); err != nil {
+		return "erreur", err.Error()
 	}
 	category, kind := j.catFilm, "movie"
 	if a.GuessedType == "tv" {
@@ -448,12 +517,8 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	} else if a.CleanTitle != "" {
 		fields["work_title"] = []string{a.CleanTitle}
 	}
-	second, err := c.Analyze(ctx, raw, fields)
-	if err != nil {
+	if err := analyzeInto(ctx, c, raw, fields, &a); err != nil {
 		return "erreur", err.Error()
-	}
-	if err := json.Unmarshal(second, &a); err != nil {
-		return "erreur", "analyse illisible : " + err.Error()
 	}
 	s.mu.Lock()
 	r.Category = category
@@ -474,7 +539,7 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	}
 
 	// Publication, puis seed.
-	desc, format := batchDescription(&a, pick, templates, category)
+	desc, format := batchDescription(&a, pick, env.templates, category, env.uploader)
 	meta := map[string][]string{"category": {category}, "description": {desc}, "description_format": {format}, "mediainfo": {mi},
 		"meta[work_title]": {pick.Title}, "meta[year]": {fmt.Sprint(yearOf(pick.Year))}, "meta[tmdb_id]": {fmt.Sprint(pick.ID)}, "meta[tmdb_type]": {kind},
 		"meta[poster_url]": {pick.PosterURL}, "meta[synopsis]": {pick.Overview}}
@@ -484,7 +549,13 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	for i, tag := range a.Tags {
 		meta[fmt.Sprintf("meta[tags][%d]", i)] = []string{tag}
 	}
-	res, err := c.Upload(ctx, raw, nil, meta)
+	return s.publishAndSeed(ctx, c, r, raw, t, meta, env)
+}
+
+// publishAndSeed : publication, .torrent personnalisé gardé, remise en seed
+// sur les mêmes données.
+func (s *server) publishAndSeed(ctx context.Context, c *Client, r *batchRow, raw []byte, t *Torrent, fields map[string][]string, env batchEnv) (string, string) {
+	res, err := c.Upload(ctx, raw, nil, fields)
 	if err != nil {
 		return "erreur", err.Error()
 	}
@@ -499,12 +570,12 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	}
 	saved := filepath.Join(outDir, sanitize(t.Name)+".torrent")
 	_ = writeFileMkdir(saved, personalized)
-	if tc, cerr := newTorrentClient(clientCfg); cerr == nil && tc != nil {
+	if tc, cerr := newTorrentClient(env.clientCfg); cerr == nil && tc != nil {
 		savePath := filepath.Dir(r.Path)
-		if remote {
+		if env.remote {
 			savePath = pathDir(r.Path)
 		}
-		if aerr := tc.Add(ctx, personalized, savePath, clientCfg.SkipCheck, clientCfg.Label); aerr != nil {
+		if aerr := tc.Add(ctx, personalized, savePath, env.clientCfg.SkipCheck, env.clientCfg.Label); aerr != nil {
 			return "publié", "publié ; client : " + aerr.Error()
 		}
 		return "publié", "publié et remis en seed"
@@ -512,10 +583,9 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	return "publié", "publié ; .torrent dans " + path.Base(saved)
 }
 
-// batchDescription : le modèle par défaut du membre pour la famille, sinon
-// une présentation sobre. Les variables suivent docs/22 §3.
-func batchDescription(a *analysis, pick *tmdbResult, templates map[string]presTemplate, category string) (string, string) {
-	family := strings.SplitN(category, "-", 2)[0]
+// batchDescription : le modèle du membre pour la famille, sinon celui du
+// site, sinon une présentation sobre. Les variables suivent docs/22 §3.
+func batchDescription(a *analysis, pick *tmdbResult, templates []presTemplate, category, uploader string) (string, string) {
 	n := a.Nomenclature
 	v := func(k string) string {
 		if n == nil {
@@ -535,22 +605,16 @@ func batchDescription(a *analysis, pick *tmdbResult, templates map[string]presTe
 		"nom_release": a.Name, "taille": a.SizeHuman, "nb_fichiers": fmt.Sprint(a.FileCount), "tags": strings.Join(a.Tags, ", "),
 		"source": v("source"), "edition": v("edition"), "team": v("group"), "langues": v("languages"), "resolution": v("resolution"),
 		"codec_video": v("video_codec"), "profondeur": v("bit_depth"), "hdr": v("hdr"), "codec_audio": v("audio_codec"), "canaux": v("channels"),
-		"duree": media("duration"), "debit": media("bitrate"), "sous_titres": media("subtitles"), "uploadeur": "", "date": time.Now().Format("02/01/2006"),
+		"duree": media("duration"), "debit": media("bitrate"), "sous_titres": media("subtitles"), "uploadeur": uploader, "date": today(),
 	}
 	if n != nil {
 		data["nom_release"] = n.BuiltName
 		data["nfo"] = n.NFO
 	}
-	tpl, ok := templates[family]
-	if !ok {
-		tpl, ok = templates["*"]
-	}
-	if ok {
-		return renderTemplate(tpl.Body, data), tpl.Format
-	}
-	body := "[center][img]{{affiche}}[/img]\n[size=22][b]{{titre}}[/b][/size]{{#annee}} ({{annee}}){{/annee}}[/center]\n\n{{#synopsis}}[h2]Synopsis[/h2]\n[quote]{{synopsis}}[/quote]{{/synopsis}}\n\n[h2]Fiche technique[/h2]\n[list]\n[*][b]Release[/b] : [c]{{nom_release}}[/c]\n[*][b]Source[/b] : {{source}}{{#edition}} · {{edition}}{{/edition}}\n[*][b]Résolution[/b] : {{resolution}}{{#hdr}} · {{hdr}}{{/hdr}}\n[*][b]Vidéo[/b] : {{codec_video}} {{profondeur}}\n[*][b]Audio[/b] : {{codec_audio}} {{canaux}} — {{langues}}\n{{#sous_titres}}[*][b]Sous-titres[/b] : {{sous_titres}}{{/sous_titres}}\n{{#duree}}[*][b]Durée[/b] : {{duree}}{{#debit}} · {{debit}}{{/debit}}{{/duree}}\n[*][b]Taille[/b] : {{taille}} ({{nb_fichiers}} fichier(s))\n{{#team}}[*][b]Team[/b] : {{team}}{{/team}}\n[/list]\n\n[center][url={{tmdb_url}}]Fiche TMDB[/url] · publié par Bifröst, {{date}}[/center]"
-	return renderTemplate(body, data), "bbcode"
+	return describe(templates, strings.SplitN(category, "-", 2)[0], func(string) map[string]string { return data }, soberFilm)
 }
+
+const soberFilm = "[center][img]{{affiche}}[/img]\n[size=22][b]{{titre}}[/b][/size]{{#annee}} ({{annee}}){{/annee}}[/center]\n\n{{#synopsis}}[h2]Synopsis[/h2]\n[quote]{{synopsis}}[/quote]{{/synopsis}}\n\n[h2]Fiche technique[/h2]\n[list]\n[*][b]Release[/b] : [c]{{nom_release}}[/c]\n[*][b]Source[/b] : {{source}}{{#edition}} · {{edition}}{{/edition}}\n[*][b]Résolution[/b] : {{resolution}}{{#hdr}} · {{hdr}}{{/hdr}}\n[*][b]Vidéo[/b] : {{codec_video}} {{profondeur}}\n[*][b]Audio[/b] : {{codec_audio}} {{canaux}} — {{langues}}\n{{#sous_titres}}[*][b]Sous-titres[/b] : {{sous_titres}}{{/sous_titres}}\n{{#duree}}[*][b]Durée[/b] : {{duree}}{{#debit}} · {{debit}}{{/debit}}{{/duree}}\n[*][b]Taille[/b] : {{taille}} ({{nb_fichiers}} fichier(s))\n{{#team}}[*][b]Team[/b] : {{team}}{{/team}}\n[/list]\n\n[center][url={{tmdb_url}}]Fiche TMDB[/url] · publié par Bifröst, {{date}}[/center]"
 
 var _ = sync.Mutex{}
 
