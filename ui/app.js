@@ -35,7 +35,7 @@ async function load(){const s=await api('GET','/ui/state');st.state=s;const c=s.
   $('mi').className='status '+(s.mediainfo?'ok':'warn');
   $('mi').innerHTML=s.mediainfo?ico('check')+'<span>mediainfo présent : les facettes seront lues dans les fichiers.</span>':ico('alert')+'<span>mediainfo absent — installe-le : <code>'+esc(s.mediainfo_hint)+'</code>. Sans lui, les facettes sont déclarées à la main et Ratatosk les vérifie.</span>';
   document.querySelector(`input[name=src][value=${c.source==='ssh'?'ssh':'local'}]`).checked=true;$('sshbox').hidden=c.source!=='ssh';
-  $('cl_type').value=c.client?.type||'';$('cl_url').value=c.client?.url||'';$('cl_user').value=c.client?.user||'';$('cl_label').value=c.client?.label||'';$('cl_skip').checked=!!c.client?.skip_check;
+  $('cl_type').value=c.client?.type||'';$('cl_url').value=c.client?.url||'';$('cl_user').value=c.client?.user||'';$('cl_label').value=c.client?.label||'';$('cl_skip').checked=!!c.client?.skip_check;$('cl_paths').value=(c.client?.path_map||[]).map(m=>m.from+' = '+m.to).join('\n');
   $('autoUpd').checked=!!s.auto_update;
   if(s.update){$('upd').hidden=false;$('updTitle').textContent='Bifröst '+s.update.version+' est disponible (tu as '+s.version+')';
     let notes=s.update.notes||'';
@@ -80,7 +80,8 @@ $('sshTest').onclick=()=>run($('sshTest'),async()=>{sshSteps([{ok:true,label:'Co
       $('hostkeyAccept').onclick=()=>run($('hostkeyAccept'),async()=>{await api('POST','/ui/ssh/accept',{key:r.hostkey.Key});$('hostkey').hidden=true;$('sshTest').click()})}
     else if(r.steps.every(x=>x.ok)){document.querySelector('input[name=src][value=ssh]').checked=true;await api('POST','/ui/settings',{source:'ssh'});if(st.me&&st.mode==='dir')browse('')}}
   catch(e){sshSteps([{ok:false,label:e.message}])}});
-const clCfg=()=>({type:$('cl_type').value,url:$('cl_url').value.trim(),user:$('cl_user').value.trim(),password:$('cl_pass').value,label:$('cl_label').value.trim(),skip_check:$('cl_skip').checked});
+const clCfg=()=>({type:$('cl_type').value,url:$('cl_url').value.trim(),user:$('cl_user').value.trim(),password:$('cl_pass').value,label:$('cl_label').value.trim(),skip_check:$('cl_skip').checked,
+  path_map:$('cl_paths').value.split('\n').map(l=>{const i=l.indexOf('=');return i<1?{}:{from:l.slice(0,i).trim(),to:l.slice(i+1).trim()}}).filter(m=>m.from&&m.to)});
 $('clDetect').onclick=()=>run($('clDetect'),async()=>{$('clMsg').className='status';$('clMsg').textContent='Sondage des ports habituels…';
   const r=await api('GET','/ui/client/detect');const c=(r.clients||[])[0];
   if(!c){$('clMsg').className='status err';$('clMsg').textContent='Aucun client trouvé sur ce poste. Active l\'interface Web du client (voir ci-dessus), ou saisis son adresse.';return}

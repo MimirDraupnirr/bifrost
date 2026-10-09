@@ -19,3 +19,33 @@ func TestGroupCrossSeeds(t *testing.T) {
 		t.Fatalf("magnet : %v", h)
 	}
 }
+
+func TestMapPath(t *testing.T) {
+	maps := []PathMap{
+		{From: "/media/D_Test", To: `D:\Test`},
+		{From: "/media/D_Test/Séries", To: `E:\Séries`},
+		{From: "/data", To: "/home/moi/downloads/"},
+	}
+	cases := []struct {
+		in       string
+		toClient bool
+		want     string
+	}{
+		{"/media/D_Test", true, `D:\Test`},
+		{"/media/D_Test/Film (2024)", true, `D:\Test\Film (2024)`},
+		{"/media/D_Test/Séries/Show S01", true, `E:\Séries\Show S01`}, // le plus long gagne
+		{"/media/D_Test2/Film", true, "/media/D_Test2/Film"},          // pas à une frontière
+		{"/data/Film", true, "/home/moi/downloads/Film"},
+		{"/ailleurs/Film", true, "/ailleurs/Film"},
+		{`D:\Test\Film (2024)`, false, "/media/D_Test/Film (2024)"},
+		{`d:\test\Film`, false, "/media/D_Test/Film"}, // Windows : casse ignorée
+		{`D:\Test/Film`, false, "/media/D_Test/Film"}, // séparateurs mêlés
+		{"/home/moi/downloads/Film", false, "/data/Film"},
+		{"/home/moi/Downloads/Film", false, "/home/moi/Downloads/Film"}, // Linux : casse respectée
+	}
+	for _, c := range cases {
+		if got := mapPath(c.in, maps, c.toClient); got != c.want {
+			t.Errorf("mapPath(%q, client=%v) = %q, attendu %q", c.in, c.toClient, got, c.want)
+		}
+	}
+}

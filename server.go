@@ -850,8 +850,7 @@ func (s *server) clientList(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	site := s.cfg.SiteURL
 	s.mu.Unlock()
-	_, exportable := tc.(*qbitClient)
-	writeJSON(w, http.StatusOK, map[string]any{"torrents": groupCrossSeeds(list, site), "exportable": exportable})
+	writeJSON(w, http.StatusOK, map[string]any{"torrents": groupCrossSeeds(list, site), "exportable": cfg.Type == "qbittorrent"})
 }
 
 func (s *server) pendingUpdate(ctx context.Context) *release {

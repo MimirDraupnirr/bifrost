@@ -26,6 +26,76 @@ type ClientConfig struct {
 	Password  string `json:"password"`
 	Label     string `json:"label"`
 	SkipCheck bool   `json:"skip_check"`
+	// Quand Bifröst et le client ne voient pas les données au même endroit
+	// (Bifröst en Docker, qBittorrent sous Windows : /media/D_Test ↔ D:\Test).
+	PathMap []PathMap `json:"path_map,omitempty"`
+}
+
+type PathMap struct {
+	From string `json:"from"` // chemin vu par Bifröst
+	To   string `json:"to"`   // le même dossier vu par le client
+}
+
+func winPath(p string) bool { return strings.Contains(p, `\`) || len(p) >= 2 && p[1] == ':' }
+
+// mapPrefix remplace le préfixe from de p par to, à une frontière de dossier.
+// / et \ se valent ; la suite prend le séparateur de to. Un côté Windows se
+// compare sans la casse.
+func mapPrefix(p, from, to string) (string, bool) {
+	norm := func(s string) string { return strings.TrimRight(strings.ReplaceAll(s, `\`, "/"), "/") }
+	np, nf := norm(p), norm(from)
+	if nf == "" || len(np) < len(nf) || (len(np) > len(nf) && np[len(nf)] != '/') {
+		return "", false
+	}
+	if head := np[:len(nf)]; head != nf && !(winPath(from) && strings.EqualFold(head, nf)) {
+		return "", false
+	}
+	rest := np[len(nf):]
+	if rest == "" {
+		return to, true
+	}
+	if winPath(to) {
+		rest = strings.ReplaceAll(rest, "/", `\`)
+	}
+	return strings.TrimRight(to, `/\`) + rest, true
+}
+
+// mapPath : le préfixe le plus long l'emporte ; sans correspondance, p est
+// rendu tel quel.
+func mapPath(p string, maps []PathMap, toClient bool) string {
+	out, best := p, -1
+	for _, m := range maps {
+		from, to := m.From, m.To
+		if !toClient {
+			from, to = to, from
+		}
+		if to == "" || len(from) <= best {
+			continue
+		}
+		if mapped, ok := mapPrefix(p, from, to); ok {
+			out, best = mapped, len(from)
+		}
+	}
+	return out
+}
+
+// mappedClient traduit à la frontière : le reste de Bifröst ne manie que ses
+// propres chemins, le client ne reçoit que les siens.
+type mappedClient struct {
+	torrentClient
+	maps []PathMap
+}
+
+func (m mappedClient) List(ctx context.Context) ([]ClientTorrent, error) {
+	list, err := m.torrentClient.List(ctx)
+	for i := range list {
+		list[i].Path = mapPath(list[i].Path, m.maps, false)
+	}
+	return list, err
+}
+
+func (m mappedClient) Add(ctx context.Context, raw []byte, savePath string, skipCheck bool, label string) error {
+	return m.torrentClient.Add(ctx, raw, mapPath(savePath, m.maps, true), skipCheck, label)
 }
 
 type ClientTorrent struct {
@@ -80,17 +150,23 @@ func newTorrentClient(c ClientConfig) (torrentClient, error) {
 	}
 	jar, _ := cookiejar.New(nil)
 	hc := &http.Client{Timeout: 2 * time.Minute, Jar: jar}
+	var tc torrentClient
 	switch c.Type {
 	case "qbittorrent":
-		return &qbitClient{base: base, cfg: c, hc: hc}, nil
+		tc = &qbitClient{base: base, cfg: c, hc: hc}
 	case "transmission":
-		return &transmissionClient{base: base, cfg: c, hc: hc}, nil
+		tc = &transmissionClient{base: base, cfg: c, hc: hc}
 	case "rtorrent":
-		return &rtorrentClient{base: base, cfg: c, hc: hc}, nil
+		tc = &rtorrentClient{base: base, cfg: c, hc: hc}
 	case "deluge":
-		return &delugeClient{base: base, cfg: c, hc: hc}, nil
+		tc = &delugeClient{base: base, cfg: c, hc: hc}
+	default:
+		return nil, fmt.Errorf("type de client inconnu : %s", c.Type)
 	}
-	return nil, fmt.Errorf("type de client inconnu : %s", c.Type)
+	if len(c.PathMap) > 0 {
+		return mappedClient{tc, c.PathMap}, nil
+	}
+	return tc, nil
 }
 
 func readBody(res *http.Response) ([]byte, error) {

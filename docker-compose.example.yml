@@ -11,6 +11,8 @@ services:
     volumes:
       - bifrost-config:/config
       - /home/moi/downloads:/data:ro
+      # Client torrent hors de ce conteneur : dans Réglages › Client torrent,
+      # déclare « /data = /home/moi/downloads » (ou D:\Downloads sous Windows).
     # Mise à jour automatique « à distance » : décommente Watchtower.
     # labels:
     #   - com.centurylinklabs.watchtower.enable=true
