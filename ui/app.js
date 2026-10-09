@@ -338,6 +338,9 @@ function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').val
   const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
   if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
   batchMode();batchPoll();if($('batchPath').value&&!st.batchPick)batchPickLoad().catch(()=>{})}
+// Tri du tableau du lot : clic sur un en-tête, second clic pour inverser ; sans clic, l'ordre du dossier.
+st.batchSort=null;
+const bRank=s=>['en cours','attente','publié','simulé','à revoir','erreur','déjà présent','ignoré'].indexOf(s);
 const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
 function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){return}
   $('batchSummary').hidden=false;
@@ -347,7 +350,10 @@ function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){retur
   $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…':(j.done?'Terminé.':''));
   $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'');
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
-  $('batchList').innerHTML='<div class="b h"><span>Release</span><span class="r">Taille</span><span>État</span><span>Détail</span></div>'+rows.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('')}
+  st.batchJob=j;const so=st.batchSort,sorted=so?[...rows].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:so.k==='status'?bRank(a.status)-bRank(b.status)||a.name.localeCompare(b.name):a.name.localeCompare(b.name))):rows;
+  const h=(key,label,cls='')=>`<button type="button" data-k="${key}" class="${so&&so.k===key?'on':''} ${so&&so.k===key&&so.d<0?'desc':''}" style="${cls}">${label}${ico('sort')}</button>`;
+  $('batchList').innerHTML=`<div class="b h">${h('name','Release')}${h('size','Taille','justify-content:flex-end')}${h('status','État')}<span class="eyebrow" style="line-height:34px">Détail</span></div>`+sorted.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('');
+  $('batchList').querySelectorAll('.h button').forEach(b=>b.onclick=()=>{st.batchSort=st.batchSort&&st.batchSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchSort.d}:{k:b.dataset.k,d:1};renderBatch(st.batchJob)})}
 async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
   if(st.batchPick&&st.batchPick.key===batchPickKey()&&st.batchPick.entries.length&&!st.batchPick.on.size)return toast('Tout est décoché : rien à traiter.','warn');
