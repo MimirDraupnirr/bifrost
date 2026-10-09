@@ -87,7 +87,7 @@ Un [`docker-compose.example.yml`](docker-compose.example.yml) est fourni, avec W
 | **Ce poste** | parcours du disque, hachage et `mediainfo` locaux |
 | **Seedbox par SSH** | clé ou mot de passe de session (jamais enregistré), empreinte d'hôte acceptée explicitement. Bifröst copie son propre binaire Linux dans `~/.bifrost` et l'exécute à la demande : **pas de démon, pas de port**, rien à désinstaller |
 | **Client sur ce PC ou sur la seedbox** | Bifröst parle au client par son interface Web : active-la (qBittorrent : Outils › Options › Interface Web ; Transmission : Accès distant ; Deluge : plugin WebUI), puis « Détecter sur ce poste » remplit le type et l'adresse |
-| **qBittorrent** | liste, export du `.torrent` d'origine, ajout sans re-vérification |
+| **qBittorrent** | liste, export du `.torrent` d'origine, ajout sans re-vérification ; le torrent ajouté garde la disposition d'origine et démarre, quels que soient tes réglages par défaut |
 | **rTorrent / ruTorrent, Transmission, Deluge** | liste et ajout ; les données sont re-hachées par la source |
 | **Aucun client** | le `.torrent` est gardé dans un dossier, à ajouter à la main |
 | **Chemins différents** | Bifröst en Docker et le client sous Windows ou hors du conteneur : *Réglages › Client torrent › Correspondance des chemins*, par exemple `/media/D_Test = D:\Test`. Bifröst traduit dans les deux sens, le client reçoit ses propres chemins |
