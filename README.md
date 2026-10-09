@@ -90,6 +90,7 @@ Un [`docker-compose.example.yml`](docker-compose.example.yml) est fourni, avec W
 | **qBittorrent** | liste, export du `.torrent` d'origine, ajout sans re-vérification |
 | **rTorrent / ruTorrent, Transmission, Deluge** | liste et ajout ; les données sont re-hachées par la source |
 | **Aucun client** | le `.torrent` est gardé dans un dossier, à ajouter à la main |
+| **Chemins différents** | Bifröst en Docker et le client sous Windows ou hors du conteneur : *Réglages › Client torrent › Correspondance des chemins*, par exemple `/media/D_Test = D:\Test`. Bifröst traduit dans les deux sens, le client reçoit ses propres chemins |
 
 <p align="center">
   <img src="docs/screens/fichiers-sombre.jpg" alt="Choix des fichiers, mode sombre" width="820">

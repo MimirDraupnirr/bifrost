@@ -389,6 +389,8 @@
         <label>Catégorie / label à poser<input id="cl_label" placeholder="draupnirr"></label>
       </div>
       <label class="switch"><input type="checkbox" id="cl_skip"><span></span>Ne pas re-vérifier les données (skip check)</label>
+      <label>Correspondance des chemins (une par ligne : chemin vu par Bifröst = chemin vu par le client)<textarea id="cl_paths" class="short" spellcheck="false" placeholder="/media/D_Test = D:\Test"></textarea></label>
+      <p class="mut">Seulement si Bifröst et le client ne voient pas les données au même endroit, par exemple Bifröst en Docker et qBittorrent sous Windows. Sans ça, le client reçoit un chemin qu'il ne connaît pas et reste à 0 %.</p>
       <div class="row end"><button id="clDetect" type="button"><svg class="i"><use href="#i-search"/></svg>Détecter sur ce poste</button><button class="primary" id="clTest" type="button">Tester le client</button></div>
       <div class="status" id="clMsg"></div>
     </section>
