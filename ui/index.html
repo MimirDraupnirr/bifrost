@@ -306,6 +306,7 @@
         <label id="batchSrcWrap" hidden>Source d'un album si rien ne l'indique<select id="batchSrc"><option value="">aucune : « à revoir »</option><option>WEB</option><option>CD</option><option>VINYL</option></select></label>
         <label>Examiner au plus<input id="batchLimit" type="number" min="0" value="0" placeholder="0 = tout"></label>
         <label>Publier au plus<input id="batchMax" type="number" min="0" value="0" placeholder="0 = sans plafond"></label>
+        <label title="Au-delà, l'entrée est ignorée sans être hachée : un dossier de plusieurs To (cross-seed, liens, collection) n'est pas une release.">Ignorer au-delà de (Go)<input id="batchMaxSize" type="number" min="0" value="300" placeholder="0 = sans plafond"></label>
       </div>
       <div class="row">
         <label class="switch"><input type="checkbox" id="batchDry" checked><span></span>Simulation : rien n'est publié</label>

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,5 +140,27 @@ func TestBatchEntriesAndInclude(t *testing.T) {
 	}
 	if len(batchRows(entries, map[string]bool{})) != 0 {
 		t.Fatal("sélection vide : rien, surtout pas tout le dossier")
+	}
+}
+
+// Un dossier sans fichier à sa racine (dossier de releases) est repéré sans
+// hacher : il part « à revoir » au lieu d'être haché d'un bloc.
+func TestMainExtensionSpotsFolderOfReleases(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "A.2020", "sub"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "A.2020", "sub", "a.mkv"), make([]byte, 10), 0o644)
+	_ = os.MkdirAll(filepath.Join(root, "B.2021"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "B.2021", "b.mkv"), make([]byte, 10), 0o644)
+	ctx := context.Background()
+	if _, err := mainExtension(ctx, localSource{}, filepath.Join(root, "A.2020")); !errors.Is(err, errNoTopFile) {
+		t.Fatalf("dossier de dossiers : %v", err)
+	}
+	if ext, err := mainExtension(ctx, localSource{}, filepath.Join(root, "B.2021")); err != nil || ext != "mkv" {
+		t.Fatalf("release normale : %q %v", ext, err)
+	}
+	for n, want := range map[int64]string{999: "999 o", 300 << 30: "300,0 Go", 5 << 39: "2,5 To"} {
+		if got := humanSize(n); got != want {
+			t.Errorf("humanSize(%d) = %q, attendu %q", n, got, want)
+		}
 	}
 }

@@ -70,6 +70,7 @@ type batchJob struct {
 	albumSrc   string // source d'un album quand rien ne l'indique (ni .log, ni .cue)
 	publishGap time.Duration
 	include    map[string]bool // nil = tout le dossier
+	maxSize    int64           // 0 = aucun plafond
 	source     string          // "local" ou user@host, pour l'historique
 }
 
@@ -88,6 +89,10 @@ type batchOpts struct {
 	// source). Absent = tout le dossier ; présent, seules celles-ci, même si
 	// d'autres sont apparues depuis : on ne publie que ce qui a été montré.
 	Include []string `json:"include"`
+	// MaxSize : au-delà (octets), l'entrée est ignorée sans être hachée — un
+	// dossier de cross-seed ou de liens de plusieurs To n'est pas une release.
+	// 0 = aucun plafond ; la page envoie 300 Go par défaut.
+	MaxSize int64 `json:"max_size"`
 }
 
 // analysis : la partie de la réponse de /api/upload/analyze que le lot lit.
@@ -252,7 +257,7 @@ func (s *server) batchStart(opts batchOpts) (*batchJob, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	j := &batchJob{Root: opts.Root, DryRun: opts.DryRun, Max: opts.Max, Limit: opts.Limit, OnlyVideo: opts.OnlyVideo && !opts.Music, Music: opts.Music,
-		Running: true, Started: time.Now(), cancel: cancel, catFilm: opts.CatFilm, catTV: opts.CatTV, albumSrc: source, publishGap: 7 * time.Second}
+		Running: true, Started: time.Now(), cancel: cancel, catFilm: opts.CatFilm, catTV: opts.CatTV, albumSrc: source, publishGap: 7 * time.Second, maxSize: max(opts.MaxSize, 0)}
 	if opts.Include != nil {
 		j.include = map[string]bool{}
 		for _, p := range opts.Include {
@@ -311,7 +316,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	s.mu.Unlock()
 	s.hist.record(histEvent{Kind: evBatchStart, Batch: batchID(j), Source: sourceName(src), Path: j.Root, DryRun: j.DryRun,
 		Data: map[string]any{"max": j.Max, "limit": j.Limit, "only_video": j.OnlyVideo, "music": j.Music, "music_source": j.albumSrc,
-			"category_film": j.catFilm, "category_tv": j.catTV, "included": len(j.include), "all": j.include == nil}})
+			"category_film": j.catFilm, "category_tv": j.catTV, "included": len(j.include), "all": j.include == nil, "max_size": j.maxSize}})
 	s.mu.Lock()
 	env := batchEnv{clientCfg: s.cfg.Client, remote: s.cfg.Source == "ssh"}
 	env.sourceTag, _ = s.me["source_tag"].(string)
@@ -377,6 +382,14 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			return
 		}
 		if r.Status != stWaiting {
+			continue
+		}
+		if j.maxSize > 0 && r.Size > j.maxSize {
+			s.mu.Lock()
+			r.Status, r.Detail = stIgnored, "au-delà du plafond ("+humanSize(r.Size)+" > "+humanSize(j.maxSize)+") : pas haché"
+			e := rowEvent(j, r)
+			s.mu.Unlock()
+			s.hist.record(e)
 			continue
 		}
 		if j.Limit > 0 && examined >= j.Limit {
@@ -568,10 +581,15 @@ func (s *server) batchTorrent(ctx context.Context, src fileSource, r *batchRow, 
 
 // batchOne : prépare une release vidéo et décide. Renvoie (statut, détail).
 func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, env batchEnv) (rowStatus, string) {
-	if j.OnlyVideo {
-		if ext, err := mainExtension(ctx, src, r.Path); err == nil && !videoExt[ext] {
-			return stIgnored, "pas une vidéo (." + ext + ")"
-		}
+	// Aucun fichier au premier niveau : un dossier de releases (cross-seed,
+	// collection), pas une release — le hacher d'un bloc prendrait des heures
+	// pour rien. Un disque complet (BDMV, VIDEO_TS) y passe aussi : à la main.
+	ext, err := mainExtension(ctx, src, r.Path)
+	if errors.Is(err, errNoTopFile) {
+		return stReview, "aucun fichier à la racine : un dossier de releases ? Coche-les une par une (un disque complet se publie à la main)"
+	}
+	if j.OnlyVideo && err == nil && !videoExt[ext] {
+		return stIgnored, "pas une vidéo (." + ext + ")"
 	}
 	raw, t, err := s.batchTorrent(ctx, src, r, env.sourceTag)
 	if err != nil {
@@ -728,6 +746,22 @@ var _ = sync.Mutex{}
 
 var videoExt = map[string]bool{"mkv": true, "mp4": true, "avi": true, "ts": true, "m2ts": true, "mov": true, "wmv": true, "webm": true, "iso": true, "m4v": true, "mpg": true, "mpeg": true}
 
+// humanSize : comme human() de la page (base 1024, « 2,5 To »).
+func humanSize(n int64) string {
+	units := []string{"o", "Ko", "Mo", "Go", "To"}
+	f, i := float64(n), 0
+	for f >= 1024 && i < len(units)-1 {
+		f /= 1024
+		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%d o", n)
+	}
+	return strings.Replace(fmt.Sprintf("%.1f %s", f, units[i]), ".", ",", 1)
+}
+
+var errNoTopFile = errors.New("dossier sans fichier à la racine")
+
 // mainExtension : extension du plus gros fichier de l'entrée, sans hacher.
 func mainExtension(ctx context.Context, src fileSource, p string) (string, error) {
 	ext := func(name string) string { return strings.ToLower(strings.TrimPrefix(path.Ext(name), ".")) }
@@ -742,7 +776,7 @@ func mainExtension(ctx context.Context, src fileSource, p string) (string, error
 		}
 	}
 	if best.Name == "" {
-		return "", errors.New("dossier sans fichier")
+		return "", errNoTopFile
 	}
 	return ext(best.Name), nil
 }
