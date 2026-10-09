@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io/fs"
 	"net/url"
 	"path"
 	"path/filepath"
@@ -38,21 +37,18 @@ var reDisc = regexp.MustCompile(`(?i)^(cd|dis[ck]|disque)[\s._-]*\d{1,2}\b`)
 func findAlbums(root string) ([]DirEntry, error) {
 	root = filepath.Clean(root)
 	withTracks := map[string]bool{}
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if d != nil && d.IsDir() && p != root {
-				return filepath.SkipDir // dossier illisible : on passe, le reste du lot continue
-			}
-			return err
+	// Liens suivis, comme au hachage : un dossier de liens vers des albums en est un.
+	err := walkFiles(root, func(rel string, _ int64, err error) error {
+		switch {
+		case err != nil && rel == "":
+			return err // le dossier lui-même est illisible
+		case err != nil:
+			return nil // dossier illisible : on passe, le reste du lot continue
+		case strings.Contains("/"+filepath.ToSlash(rel), "/."):
+			return nil // rangé dans un dossier caché
 		}
-		if d.IsDir() {
-			if p != root && strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if audioExt[extOf(d.Name())] {
-			withTracks[filepath.Dir(p)] = true
+		if audioExt[extOf(filepath.Base(rel))] {
+			withTracks[filepath.Dir(filepath.Join(root, rel))] = true
 		}
 		return nil
 	})

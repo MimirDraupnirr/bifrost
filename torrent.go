@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -252,20 +251,14 @@ func makeTorrent(path, source string, progress progressFunc) ([]byte, error) {
 	var entries []entry
 	var total int64
 	if st.IsDir() {
-		err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
+		// Liens suivis : la longueur déclarée est celle de la cible, celle
+		// qu'os.Open lit ; abs passe par le chemin d'origine (ordre inchangé).
+		err = walkFiles(path, func(rel string, size int64, err error) error {
 			if err != nil {
 				return err
 			}
-			if d.IsDir() || strings.HasPrefix(d.Name(), ".") {
-				return nil
-			}
-			fi, err := d.Info()
-			if err != nil {
-				return err
-			}
-			rel, _ := filepath.Rel(path, p)
-			entries = append(entries, entry{abs: p, rel: strings.Split(filepath.ToSlash(rel), "/"), size: fi.Size()})
-			total += fi.Size()
+			entries = append(entries, entry{abs: filepath.Join(path, rel), rel: strings.Split(filepath.ToSlash(rel), "/"), size: size})
+			total += size
 			return nil
 		})
 		if err != nil {

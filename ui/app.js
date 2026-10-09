@@ -384,7 +384,7 @@ async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GE
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
   if(st.batchPick&&st.batchPick.key===batchPickKey()&&st.batchPick.entries.length&&!st.batchPick.on.size)return toast('Tout est décoché : rien à traiter.','warn');
   if(!dry&&!confirm('Publier pour de vrai ce qui est sûr ? Les releases douteuses resteront « à revoir ».'))return;
-  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,include:batchIncluded()});
+  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,max_size:Math.round((+$('batchMaxSize').value||0)*1024**3),only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,include:batchIncluded()});
   toast(dry?'Simulation lancée':'Lot lancé','ok');batchPoll()});
 // Musique et « vidéos seulement » s'excluent ; les catégories film/série ne servent pas aux albums.
 function batchMode(){const m=$('batchMusic').checked;$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m}

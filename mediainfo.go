@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,11 +106,14 @@ func listDir(path string) ([]DirEntry, error) {
 		if strings.HasPrefix(it.Name(), ".") {
 			continue
 		}
-		e := DirEntry{Name: it.Name(), Path: filepath.Join(path, it.Name()), IsDir: it.IsDir()}
-		if it.IsDir() {
-			e.Size = dirSize(e.Path)
-		} else if fi, err := it.Info(); err == nil {
-			e.Size = fi.Size()
+		e := DirEntry{Name: it.Name(), Path: filepath.Join(path, it.Name())}
+		// os.Stat suit les liens : un lien vers un dossier est un dossier, de la
+		// taille de sa cible. Un lien cassé reste un fichier vide.
+		if fi, err := os.Stat(e.Path); err == nil {
+			e.IsDir, e.Size = fi.IsDir(), fi.Size()
+			if e.IsDir {
+				e.Size = dirSize(e.Path)
+			}
 		}
 		out = append(out, e)
 	}
@@ -122,21 +126,76 @@ func listDir(path string) ([]DirEntry, error) {
 	return out, nil
 }
 
-// dirSize : somme des fichiers, bornée à un niveau de profondeur raisonnable
-// pour que la liste reste instantanée sur une seedbox pleine. Les fichiers
-// cachés (.DS_Store…) sont exclus comme par makeTorrent : la taille est
-// celle du torrent, celle que /api/torrents/match et le cache comparent.
+// dirSize : somme des fichiers, parcourus comme par makeTorrent (walkFiles :
+// fichiers cachés exclus, liens suivis) : la taille est celle du torrent,
+// celle que /api/torrents/match, le cache et le plafond du lot comparent.
 // ponytail: parcours complet ; mettre en cache si un dossier à 100k fichiers traîne.
 func dirSize(path string) int64 {
 	var total int64
-	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || strings.HasPrefix(d.Name(), ".") {
-			return nil
-		}
-		if fi, err := d.Info(); err == nil {
-			total += fi.Size()
-		}
+	_ = walkFiles(path, func(_ string, size int64, _ error) error {
+		total += size // une erreur arrive avec une taille nulle : on passe
 		return nil
 	})
 	return total
+}
+
+// walkFiles : les fichiers de root (fichiers cachés exclus), liens symboliques
+// SUIVIS — taille de la cible, dossiers liés parcourus. C'est le parcours
+// unique de makeTorrent, dirSize et findAlbums : la taille listée, celle du
+// torrent et ce qui est haché concordent (avant, un lien comptait pour la
+// taille du lien et le hachage lisait la cible : torrent refusé par le site).
+// rel est relatif à root ("" = root). Une erreur arrive à fn avec une taille
+// nulle : le hachage s'arrête, les tailles et les albums passent. Un lien
+// cassé est ignoré (rien à seeder), de même qu'un lien vers un dossier déjà
+// parcouru, contenu dans l'un d'eux ou au-dessus : pas de boucle, aucun
+// fichier compté deux fois, et un lien vers « / » ne part pas hacher le disque.
+func walkFiles(root string, fn func(rel string, size int64, err error) error) error {
+	var walked []string
+	var walk func(dir, prefix string) error
+	walk = func(dir, prefix string) error {
+		real, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return fn(prefix, 0, err)
+		}
+		for _, w := range walked {
+			if within(real, w) || within(w, real) {
+				return nil
+			}
+		}
+		walked = append(walked, real)
+		return filepath.WalkDir(real, func(p string, d fs.DirEntry, err error) error {
+			rel := prefix
+			if r, _ := filepath.Rel(real, p); r != "." {
+				rel = filepath.Join(prefix, r)
+			}
+			if err != nil {
+				return fn(rel, 0, err)
+			}
+			if d.IsDir() || strings.HasPrefix(d.Name(), ".") {
+				return nil
+			}
+			if d.Type()&fs.ModeSymlink == 0 {
+				fi, err := d.Info()
+				if err != nil {
+					return fn(rel, 0, err)
+				}
+				return fn(rel, fi.Size(), nil)
+			}
+			fi, err := os.Stat(p)
+			switch {
+			case err != nil:
+				return nil // lien cassé
+			case fi.IsDir():
+				return walk(p, rel)
+			}
+			return fn(rel, fi.Size(), nil)
+		})
+	}
+	return walk(root, "")
+}
+
+// within : p est dir ou se trouve dessous.
+func within(p, dir string) bool {
+	sep := string(filepath.Separator)
+	return p == dir || strings.HasPrefix(p, strings.TrimSuffix(dir, sep)+sep)
 }

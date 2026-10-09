@@ -46,7 +46,7 @@ Ce que tu seedes déjà pour d'autres trackers et qui existe sur Draupnirr se re
 
 ### Lot : un dossier entier, sans y toucher
 
-Tu donnes un dossier, Bifröst passe chaque entrée au crible : déjà sur Draupnirr → ignorée ; sinon hachage, MediaInfo, œuvre TMDB, fiche calculée par Draupnirr, **publication seulement si tout est sûr** — œuvre certaine (titre ou titre original, même année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir » avec la raison, à finir dans l'onglet Uploader. Simulation par défaut, plafonds d'examen et de publication, filtre « vidéos seulement », arrêt propre, et une pause entre deux publications pour respecter l'API du site.
+Tu donnes un dossier, Bifröst passe chaque entrée au crible : déjà sur Draupnirr → ignorée ; sinon hachage, MediaInfo, œuvre TMDB, fiche calculée par Draupnirr, **publication seulement si tout est sûr** — œuvre certaine (titre ou titre original, même année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir » avec la raison, à finir dans l'onglet Uploader. Simulation par défaut, plafonds d'examen et de publication, filtre « vidéos seulement », arrêt propre, et une pause entre deux publications pour respecter l'API du site. Une entrée au-delà du plafond de taille (300 Go par défaut) est ignorée sans être hachée, et un dossier sans fichier à sa racine (un dossier de releases, pas une release) part « à revoir ». Les liens symboliques sont suivis : taille et hachage sont ceux des fichiers pointés.
 
 ### Musique : un album, une discographie
 
