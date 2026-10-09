@@ -134,6 +134,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// La page change à chaque version : le navigateur la redemande toujours
+	// (sinon un app.js d'avant la mise à jour peut survivre au redémarrage).
+	if !strings.HasPrefix(r.URL.Path, "/ui/") {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
 	s.mux.ServeHTTP(w, r)
 }
 
