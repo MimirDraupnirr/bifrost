@@ -354,7 +354,9 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		s.mu.Lock()
 		r.Status, r.Detail = "en cours", "hachage"
 		s.mu.Unlock()
-		status, detail := run(ctx, c, src, j, r, env)
+		// Une pause imposée par Draupnirr (429) se voit dans la ligne, sinon elle reste figée sur l'étape.
+		rctx := withWaitNotice(ctx, func(d time.Duration) { s.setPause(r, d) })
+		status, detail := run(rctx, c, src, j, r, env)
 		s.mu.Lock()
 		r.Status, r.Detail = status, detail
 		switch status {
@@ -397,6 +399,16 @@ func batchRows(entries []DirEntry, exclude map[string]bool) []*batchRow {
 		}
 	}
 	return rows
+}
+
+const pauseMark = " · Draupnirr limite les appels, reprise dans "
+
+// setPause : ajoute à l'étape en cours l'attente imposée par Draupnirr.
+func (s *server) setPause(r *batchRow, d time.Duration) {
+	s.mu.Lock()
+	step, _, _ := strings.Cut(r.Detail, pauseMark)
+	r.Detail = step + pauseMark + fmt.Sprintf("%d s", int(d.Round(time.Second)/time.Second))
+	s.mu.Unlock()
 }
 
 func (s *server) setDetail(r *batchRow, detail string) {

@@ -63,6 +63,14 @@ func gateFor(base, method string) *gate {
 	return g.(*gate)
 }
 
+// waitNoticeKey : le contexte peut porter une fonction prévenue de chaque
+// pause avant un appel (le lot l'affiche dans la ligne en cours).
+type waitNoticeKey struct{}
+
+func withWaitNotice(ctx context.Context, f func(time.Duration)) context.Context {
+	return context.WithValue(ctx, waitNoticeKey{}, f)
+}
+
 // wait : bloque jusqu'à la fin de la pause en cours (ou l'annulation).
 func (g *gate) wait(ctx context.Context) error {
 	g.mu.Lock()
@@ -70,6 +78,9 @@ func (g *gate) wait(ctx context.Context) error {
 	g.mu.Unlock()
 	if d <= 0 {
 		return nil
+	}
+	if f, ok := ctx.Value(waitNoticeKey{}).(func(time.Duration)); ok {
+		f(d)
 	}
 	t := time.NewTimer(d)
 	defer t.Stop()

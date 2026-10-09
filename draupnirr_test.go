@@ -86,3 +86,31 @@ func TestRetryAfter(t *testing.T) {
 		t.Fatalf("backoff : %v", d)
 	}
 }
+
+func TestGateWaitNotice(t *testing.T) {
+	g := &gate{}
+	g.pause(30 * time.Millisecond)
+	var got time.Duration
+	ctx := withWaitNotice(context.Background(), func(d time.Duration) { got = d })
+	if err := g.wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got <= 0 || got > 30*time.Millisecond {
+		t.Fatalf("pause annoncée : %v", got)
+	}
+	got = 0
+	_ = g.wait(ctx)
+	if got != 0 {
+		t.Fatal("aucune pause en cours : rien à annoncer")
+	}
+}
+
+func TestSetPauseKeepsStep(t *testing.T) {
+	s := &server{}
+	r := &batchRow{Detail: "analyse"}
+	s.setPause(r, 12*time.Second)
+	s.setPause(r, 5*time.Second)
+	if r.Detail != "analyse"+pauseMark+"5 s" {
+		t.Fatalf("détail : %q", r.Detail)
+	}
+}
