@@ -339,22 +339,33 @@ function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').val
   const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
   if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
   batchMode();batchPoll();if($('batchPath').value&&!st.batchPick)batchPickLoad().catch(()=>{})}
-// Tri du tableau du lot : clic sur un en-tête, second clic pour inverser ; sans clic, l'ordre du dossier.
-st.batchSort=null;
-const bRank=s=>['en cours','attente','publié','simulé','à revoir','erreur','déjà présent','ignoré'].indexOf(s);
+// Une seule liste : les entrées du dossier, cochables tant qu'aucun lot ne tourne, avec l'état
+// que le lot leur donne. Tri par clic sur un en-tête, second clic pour inverser ; sans clic, l'ordre du dossier.
+st.batchSort=null;st.batchJob=null;
+const bRank=s=>['en cours','attente','publié','simulé','à revoir','erreur','déjà présent','ignoré','','exclu'].indexOf(s||'');
 const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
-function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){return}
-  $('batchSummary').hidden=false;
-  const todo=rows.filter(r=>r.status!=='déjà présent'),done=todo.filter(r=>r.status!=='attente'&&r.status!=='en cours').length,cur=rows.find(r=>r.status==='en cours');
-  const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
-  $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
-  $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…':(j.done?'Terminé.':''));
-  $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'');
+function renderBatch(j){st.batchJob=j;const rows=j.rows||[];
+  if(rows.length||j.running){$('batchSummary').hidden=false;
+    const todo=rows.filter(r=>r.status!=='déjà présent'),done=todo.filter(r=>r.status!=='attente'&&r.status!=='en cours').length,cur=rows.find(r=>r.status==='en cours');
+    const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
+    $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
+    $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…':(j.done?'Terminé.':''));
+    $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
-  st.batchJob=j;const so=st.batchSort,sorted=so?[...rows].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:so.k==='status'?bRank(a.status)-bRank(b.status)||a.name.localeCompare(b.name):a.name.localeCompare(b.name))):rows;
+  renderBatchTable()}
+function renderBatchTable(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,p=st.batchPick&&st.batchPick.key===batchPickKey()?st.batchPick:null;
+  const byPath=new Map(jobRows.map(r=>[r.path,r]));
+  // Pendant un lot, l'état vient du serveur ; sinon une entrée décochée est « exclu », même si un lot précédent l'a vue.
+  const rows=p?p.entries.map(e=>{const on=p.on.has(e.path),r=byPath.get(e.path);
+      return {...(r&&(running||on)?r:{name:e.name,size:e.size,path:e.path,status:on?'':'exclu'}),is_dir:e.is_dir,on,pick:true}}):jobRows;
+  if(p){const n=p.entries.length,k=p.on.size;$('batchPickAll').hidden=$('batchPickNone').hidden=n===0||running;
+    $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.'}
+  if(!rows.length){$('batchList').innerHTML=`<div class="empty">${ico('folder')}<span>${p?'Ce dossier est vide.':'Choisis un dossier : ses entrées s\'affichent ici, à cocher.'}</span></div>`;return}
+  const so=st.batchSort,sorted=so?[...rows].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:so.k==='status'?bRank(a.status)-bRank(b.status)||a.name.localeCompare(b.name):a.name.localeCompare(b.name))):rows;
   const h=(key,label,cls='')=>`<button type="button" data-k="${key}" class="${so&&so.k===key?'on':''} ${so&&so.k===key&&so.d<0?'desc':''}" style="${cls}">${label}${ico('sort')}</button>`;
-  $('batchList').innerHTML=`<div class="b h">${h('name','Release')}${h('size','Taille','justify-content:flex-end')}${h('status','État')}<span class="eyebrow" style="line-height:34px">Détail</span></div>`+sorted.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('');
-  $('batchList').querySelectorAll('.h button').forEach(b=>b.onclick=()=>{st.batchSort=st.batchSort&&st.batchSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchSort.d}:{k:b.dataset.k,d:1};renderBatch(st.batchJob)})}
+  $('batchList').innerHTML=`<div class="b h"><span></span>${h('name','Release')}${h('size','Taille','justify-content:flex-end')}${h('status','État')}<span class="eyebrow" style="line-height:34px">Détail</span></div>`+sorted.map(r=>`<div class="b ${r.pick&&!r.on?'off':''}"><span>${r.pick?`<input type="checkbox" data-p="${esc(r.path)}" ${r.on?'checked':''} ${running?'disabled':''}>`:''}</span><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span>${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'<span class="mut dash">—</span>'}</span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('');
+  $('batchList').querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchTable()});
+  $('batchList').querySelectorAll('.h button').forEach(b=>b.onclick=()=>{st.batchSort=st.batchSort&&st.batchSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchSort.d}:{k:b.dataset.k,d:1};renderBatchTable()})}
 async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
   if(st.batchPick&&st.batchPick.key===batchPickKey()&&st.batchPick.entries.length&&!st.batchPick.on.size)return toast('Tout est décoché : rien à traiter.','warn');
@@ -367,25 +378,17 @@ $('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked
 $('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
 // Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ.
 // Seules les décochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
-st.batchPick=null;st.batchPickSort=null;
+st.batchPick=null;
 const batchPickKey=()=>$('batchPath').value.trim()+'|'+($('batchMusic').checked?1:0);
 function batchExcluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return[];return p.entries.filter(e=>!p.on.has(e.path)).map(e=>e.path)}
-function renderBatchPick(){const p=st.batchPick,n=p.entries.length,k=p.entries.filter(e=>p.on.has(e.path)).length;
-  $('batchPick').hidden=false;$('batchPickAll').hidden=$('batchPickNone').hidden=n===0;
-  $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.';
-  const so=st.batchPickSort,list=so?[...p.entries].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:a.name.localeCompare(b.name))):p.entries;
-  const h=(key,label,cls='')=>`<button type="button" data-k="${key}" class="${so&&so.k===key?'on':''} ${so&&so.k===key&&so.d<0?'desc':''} ${cls}">${label}${ico('sort')}</button>`;
-  $('batchPick').innerHTML=n?`<div class="e ph">${h('name','Release','grow')}${h('size','Taille')}</div>`+list.map(e=>`<label class="e ${e.is_dir?'dir':''} ${p.on.has(e.path)?'':'off'}"><input type="checkbox" data-p="${esc(e.path)}" ${p.on.has(e.path)?'checked':''}>${ico(e.is_dir?'folder':'file')}<span class="n" title="${esc(e.path)}">${esc(e.name)}</span><span class="sz">${human(e.size)}</span></label>`).join(''):'<div class="empty"><span>Ce dossier est vide.</span></div>';
-  [...$('batchPick').querySelectorAll('input')].forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchPick()})
-  $('batchPick').querySelectorAll('.ph button').forEach(b=>b.onclick=()=>{st.batchPickSort=st.batchPickSort&&st.batchPickSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchPickSort.d}:{k:b.dataset.k,d:1};renderBatchPick()})}
 async function batchPickLoad(){const path=$('batchPath').value.trim();if(!path)return toast('Choisis un dossier','warn');const key=batchPickKey();
-  $('batchPick').hidden=false;$('batchPick').innerHTML='<div class="empty"><span>Lecture du dossier…</span></div>';
+  $('batchPickCount').textContent='Lecture du dossier…';
   const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+($('batchMusic').checked?'&music=1':''));if(key!==batchPickKey())return;
   const prev=st.batchPick&&st.batchPick.key===key?st.batchPick:null;const entries=r.entries||[];
-  st.batchPick={key,entries,on:new Set(entries.filter(e=>!prev||!prev.entries.some(x=>x.path===e.path)||prev.on.has(e.path)).map(e=>e.path))};renderBatchPick()}
-$('batchPickLoad').onclick=()=>run($('batchPickLoad'),()=>batchPickLoad().catch(e=>{$('batchPick').innerHTML=`<div class="empty"><span>${esc(e.message)}</span></div>`;toast(e.message,'err')}));
+  st.batchPick={key,entries,on:new Set(entries.filter(e=>!prev||!prev.entries.some(x=>x.path===e.path)||prev.on.has(e.path)).map(e=>e.path))};renderBatchTable()}
+$('batchPickLoad').onclick=()=>run($('batchPickLoad'),()=>batchPickLoad().catch(e=>{$('batchPickCount').textContent=e.message;toast(e.message,'err')}));
 $('batchPath').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('batchPickLoad').click()}});
 $('batchPath').addEventListener('change',()=>{if(st.batchPick&&st.batchPick.key!==batchPickKey())$('batchPickLoad').click()});
-$('batchPickAll').onclick=()=>{st.batchPick.entries.forEach(e=>st.batchPick.on.add(e.path));renderBatchPick()};
-$('batchPickNone').onclick=()=>{st.batchPick.on.clear();renderBatchPick()};
+$('batchPickAll').onclick=()=>{st.batchPick.entries.forEach(e=>st.batchPick.on.add(e.path));renderBatchTable()};
+$('batchPickNone').onclick=()=>{st.batchPick.on.clear();renderBatchTable()};
 $('batchStop').onclick=()=>api('POST','/ui/batch/stop').then(()=>toast('Arrêt demandé après la release en cours','info'));
