@@ -280,15 +280,15 @@ const soberAlbum = "[center]{{#affiche}}[img]{{affiche}}[/img]\n{{/affiche}}[siz
 // batchAlbum : un album du lot. Analyse sans édition, recherche MusicBrainz
 // (sauf édition lue dans les tags), seconde analyse avec la catégorie
 // proposée et l'édition sûre, décision, publication.
-func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, env batchEnv) (string, string) {
+func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, env batchEnv) (rowStatus, string) {
 	raw, t, err := s.batchTorrent(ctx, src, r, env.sourceTag)
 	if err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	s.setDetail(r, "mediainfo des pistes")
 	mi, err := src.MediaInfo(ctx, r.Path)
 	if err != nil {
-		return "à revoir", "MediaInfo : " + err.Error()
+		return stReview, "MediaInfo : " + err.Error()
 	}
 	fields := map[string][]string{"category": {"musique-album"}, "mediainfo": {mi}}
 	if j.albumSrc != "" && !hasRipLog(t) {
@@ -297,12 +297,12 @@ func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *b
 	s.setDetail(r, "analyse")
 	var a analysis
 	if err := analyzeInto(ctx, c, raw, fields, &a); err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	m := a.Music
 	if m == nil || !m.Sheet {
 		_, why := decideMusic(&a)
-		return "à revoir", why
+		return stReview, why
 	}
 
 	var pick *mbRelease
@@ -328,7 +328,7 @@ func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *b
 	}
 	s.setDetail(r, "analyse")
 	if err := analyzeInto(ctx, c, raw, fields, &a); err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	category := fields["category"][0]
 	s.mu.Lock()
@@ -346,13 +346,13 @@ func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *b
 		if why != "" {
 			reason += " ; " + why
 		}
-		return "à revoir", reason
+		return stReview, reason
 	}
 	if j.DryRun {
 		if why != "" {
-			return "simulé", "publiable sans édition MusicBrainz : " + a.Music.BuiltName
+			return stSimulated, "publiable sans édition MusicBrainz : " + a.Music.BuiltName
 		}
-		return "simulé", "publiable : " + a.Music.BuiltName
+		return stSimulated, "publiable : " + a.Music.BuiltName
 	}
 
 	desc, format := describe(env.templates, "musique", func(f string) map[string]string { return musicData(&a, f, env.uploader) }, soberAlbum)

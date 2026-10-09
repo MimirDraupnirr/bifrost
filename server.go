@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -96,7 +95,6 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/batch/stop", s.batchStopHandler)
 	s.mux.HandleFunc("GET /ui/batch/status", s.batchStatusHandler)
 	s.mux.HandleFunc("GET /ui/batch/list", s.batchListHandler)
-	s.mux.HandleFunc("GET /ui/history", s.historyHandler)
 	s.mux.HandleFunc("GET /ui/crossseed/scan", s.crossScan)
 	s.mux.HandleFunc("POST /ui/crossseed/add", s.crossAdd)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
@@ -756,7 +754,7 @@ func (s *server) publish(w http.ResponseWriter, r *http.Request) {
 // publishEvent : une publication faite à la main, avec les choix du membre
 // (catégorie, œuvre, facettes) ; la description et le synopsis restent sur Draupnirr.
 func publishEvent(src fileSource, j *job, in map[string]any, res *UploadResult, resp map[string]any) histEvent {
-	e := histEvent{Kind: "publish", Source: sourceName(src), Path: j.Path, Status: "publié", ID: res.ID, URL: fmt.Sprint(resp["url"])}
+	e := histEvent{Kind: evPublish, Source: sourceName(src), Path: j.Path, Status: stPublished, ID: res.ID, URL: fmt.Sprint(resp["url"])}
 	if j.Torrent != nil {
 		e.Name, e.Size, e.InfoHash = j.Torrent.Name, j.Torrent.Size, j.Torrent.InfoHash
 	}
@@ -1095,7 +1093,7 @@ func (s *server) crossAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	s.hist.record(histEvent{Kind: "cross_seed", Source: sourceName(s.source()), Path: in.Path, Name: t.Name, Size: t.Size, InfoHash: t.InfoHash,
+	s.hist.record(histEvent{Kind: evCrossSeed, Source: sourceName(s.source()), Path: in.Path, Name: t.Name, Size: t.Size, InfoHash: t.InfoHash,
 		ID: in.ID, URL: site + "/torrents/" + in.ID, Detail: "ajouté au client sur " + savePath})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": t.Name, "infohash": t.InfoHash, "save_path": savePath})
 }
@@ -1144,19 +1142,6 @@ func (s *server) batchListHandler(w http.ResponseWriter, r *http.Request) {
 		out[i] = listed{e, s.hist.lastFor(sourceName(src), e.Path, e.Size)}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": root, "entries": out})
-}
-
-// historyHandler : les derniers événements (200 par défaut, 2000 au plus), filtrables par ?q=.
-func (s *server) historyHandler(w http.ResponseWriter, r *http.Request) {
-	limit := 200
-	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
-		limit = min(n, 2000)
-	}
-	events := s.hist.recent(limit, r.URL.Query().Get("q"))
-	if events == nil {
-		events = []histEvent{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": events})
 }
 
 func (s *server) batchStopHandler(w http.ResponseWriter, r *http.Request) {

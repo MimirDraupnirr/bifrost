@@ -18,19 +18,34 @@ import (
 // intervention — à condition que la fiche soit SÛRE. Dans le doute, la
 // release est mise « à revoir » et rien n'est publié. Par défaut on simule.
 
+// rowStatus : l'état d'une ligne du lot, tel que la page l'affiche (BS dans
+// ui/app.js) et que l'historique le garde — ces libellés sont le contrat.
+type rowStatus string
+
+const (
+	stWaiting   rowStatus = "attente"
+	stRunning   rowStatus = "en cours"
+	stPresent   rowStatus = "déjà présent"
+	stPublished rowStatus = "publié"
+	stSimulated rowStatus = "simulé"
+	stReview    rowStatus = "à revoir"
+	stError     rowStatus = "erreur"
+	stIgnored   rowStatus = "ignoré"
+)
+
 type batchRow struct {
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Size     int64  `json:"size"`
-	Status   string `json:"status"` // attente · en cours · déjà présent · publié · à revoir · erreur · simulé
-	Detail   string `json:"detail,omitempty"`
-	Category string `json:"category,omitempty"`
-	Built    string `json:"built,omitempty"`
-	TMDB     string `json:"tmdb,omitempty"`
-	Edition  string `json:"edition,omitempty"` // édition MusicBrainz d'un album
-	ID       string `json:"id,omitempty"`
-	URL      string `json:"url,omitempty"`
-	InfoHash string `json:"infohash,omitempty"`
+	Path     string    `json:"path"`
+	Name     string    `json:"name"`
+	Size     int64     `json:"size"`
+	Status   rowStatus `json:"status"`
+	Detail   string    `json:"detail,omitempty"`
+	Category string    `json:"category,omitempty"`
+	Built    string    `json:"built,omitempty"`
+	TMDB     string    `json:"tmdb,omitempty"`
+	Edition  string    `json:"edition,omitempty"` // édition MusicBrainz d'un album
+	ID       string    `json:"id,omitempty"`
+	URL      string    `json:"url,omitempty"`
+	InfoHash string    `json:"infohash,omitempty"`
 }
 
 type batchJob struct {
@@ -280,7 +295,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			j.Error = err.Error()
 		}
-		end := histEvent{Kind: "batch_end", Batch: batchID(j), Source: j.source, Path: j.Root, Detail: j.Error, DryRun: j.DryRun,
+		end := histEvent{Kind: evBatchEnd, Batch: batchID(j), Source: j.source, Path: j.Root, Detail: j.Error, DryRun: j.DryRun,
 			Data: map[string]any{"published": j.Published, "review": j.Review, "skipped": j.Skipped, "stopped": errors.Is(err, context.Canceled)}}
 		s.mu.Unlock()
 		s.hist.record(end)
@@ -294,7 +309,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	s.mu.Lock()
 	j.source = sourceName(src)
 	s.mu.Unlock()
-	s.hist.record(histEvent{Kind: "batch_start", Batch: batchID(j), Source: sourceName(src), Path: j.Root, DryRun: j.DryRun,
+	s.hist.record(histEvent{Kind: evBatchStart, Batch: batchID(j), Source: sourceName(src), Path: j.Root, DryRun: j.DryRun,
 		Data: map[string]any{"max": j.Max, "limit": j.Limit, "only_video": j.OnlyVideo, "music": j.Music, "music_source": j.albumSrc,
 			"category_film": j.catFilm, "category_tv": j.catTV, "included": len(j.include), "all": j.include == nil}})
 	s.mu.Lock()
@@ -339,7 +354,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 	s.mu.Lock()
 	for _, r := range j.Rows {
 		if name, ok := present[r.Size]; ok {
-			r.Status, r.Detail = "déjà présent", name
+			r.Status, r.Detail = stPresent, name
 			j.Skipped++
 			seen = append(seen, rowEvent(j, r))
 		}
@@ -361,7 +376,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			finish(ctx.Err())
 			return
 		}
-		if r.Status != "attente" {
+		if r.Status != stWaiting {
 			continue
 		}
 		if j.Limit > 0 && examined >= j.Limit {
@@ -373,7 +388,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			continue
 		}
 		s.mu.Lock()
-		r.Status, r.Detail = "en cours", "hachage"
+		r.Status, r.Detail = stRunning, "hachage"
 		s.mu.Unlock()
 		// Une pause imposée par Draupnirr (429) se voit dans la ligne, sinon elle reste figée sur l'étape.
 		rctx := withRetry(ctx, s.pauseNotice(&r.Detail))
@@ -381,15 +396,19 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		s.mu.Lock()
 		r.Status, r.Detail = status, detail
 		switch status {
-		case "publié", "simulé":
+		case stPublished, stSimulated:
 			j.Published++
-		case "à revoir":
+		case stReview:
 			j.Review++
 		}
 		e := rowEvent(j, r)
 		s.mu.Unlock()
-		s.hist.record(e)
-		if status == "publié" {
+		// Un arrêt en cours de route n'est pas une décision : il ne doit pas
+		// remplacer la précédente (« à revoir » et sa raison) dans l'historique.
+		if status != stError || ctx.Err() == nil {
+			s.hist.record(e)
+		}
+		if status == stPublished {
 			select { // throttle api-write : 10 publications par minute
 			case <-ctx.Done():
 			case <-time.After(j.publishGap):
@@ -403,9 +422,9 @@ func batchID(j *batchJob) string { return j.Started.Format(time.RFC3339) }
 
 // rowEvent : la décision du lot pour une ligne, telle qu'elle s'affiche (sous s.mu).
 func rowEvent(j *batchJob, r *batchRow) histEvent {
-	kind := "decision"
-	if r.Status == "publié" {
-		kind = "publish"
+	kind := evDecision
+	if r.Status == stPublished {
+		kind = evPublish
 	}
 	return histEvent{Kind: kind, Batch: batchID(j), Source: j.source, Path: r.Path, Name: r.Name, Size: r.Size, InfoHash: r.InfoHash,
 		Status: r.Status, Detail: r.Detail, Category: r.Category, Built: r.Built, TMDB: r.TMDB, Edition: r.Edition, ID: r.ID, URL: r.URL, DryRun: j.DryRun}
@@ -433,7 +452,7 @@ func batchRows(entries []DirEntry, include map[string]bool) []*batchRow {
 	var rows []*batchRow
 	for _, e := range entries {
 		if include == nil || include[e.Path] {
-			rows = append(rows, &batchRow{Path: e.Path, Name: e.Name, Size: e.Size, Status: "attente"})
+			rows = append(rows, &batchRow{Path: e.Path, Name: e.Name, Size: e.Size, Status: stWaiting})
 		}
 	}
 	return rows
@@ -548,15 +567,15 @@ func (s *server) batchTorrent(ctx context.Context, src fileSource, r *batchRow, 
 }
 
 // batchOne : prépare une release vidéo et décide. Renvoie (statut, détail).
-func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, env batchEnv) (string, string) {
+func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *batchJob, r *batchRow, env batchEnv) (rowStatus, string) {
 	if j.OnlyVideo {
 		if ext, err := mainExtension(ctx, src, r.Path); err == nil && !videoExt[ext] {
-			return "ignoré", "pas une vidéo (." + ext + ")"
+			return stIgnored, "pas une vidéo (." + ext + ")"
 		}
 	}
 	raw, t, err := s.batchTorrent(ctx, src, r, env.sourceTag)
 	if err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	s.setDetail(r, "mediainfo")
 	mi, _ := src.MediaInfo(ctx, src.MainFile(r.Path, t))
@@ -565,7 +584,7 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	s.setDetail(r, "analyse")
 	var a analysis
 	if err := analyzeInto(ctx, c, raw, map[string][]string{"category": {j.catFilm}, "mediainfo": {mi}}, &a); err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	category, kind := j.catFilm, "movie"
 	if a.GuessedType == "tv" {
@@ -607,7 +626,7 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 		fields["work_title"] = []string{a.CleanTitle}
 	}
 	if err := analyzeInto(ctx, c, raw, fields, &a); err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	s.mu.Lock()
 	r.Category = category
@@ -621,10 +640,10 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 
 	ok, reason := decide(&a, pick, pickReason)
 	if !ok {
-		return "à revoir", reason
+		return stReview, reason
 	}
 	if j.DryRun {
-		return "simulé", "publiable : " + a.Nomenclature.BuiltName
+		return stSimulated, "publiable : " + a.Nomenclature.BuiltName
 	}
 
 	// Publication, puis seed.
@@ -643,10 +662,10 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 
 // publishAndSeed : publication, .torrent personnalisé gardé, remise en seed
 // sur les mêmes données.
-func (s *server) publishAndSeed(ctx context.Context, c *Client, r *batchRow, raw []byte, t *Torrent, fields map[string][]string, env batchEnv) (string, string) {
+func (s *server) publishAndSeed(ctx context.Context, c *Client, r *batchRow, raw []byte, t *Torrent, fields map[string][]string, env batchEnv) (rowStatus, string) {
 	res, err := c.Upload(ctx, raw, nil, fields)
 	if err != nil {
-		return "erreur", err.Error()
+		return stError, err.Error()
 	}
 	s.mu.Lock()
 	r.ID = res.ID
@@ -655,7 +674,7 @@ func (s *server) publishAndSeed(ctx context.Context, c *Client, r *batchRow, raw
 	s.mu.Unlock()
 	personalized, err := c.Download(ctx, res.ID)
 	if err != nil {
-		return "publié", "publié, mais .torrent non récupéré : " + err.Error()
+		return stPublished, "publié, mais .torrent non récupéré : " + err.Error()
 	}
 	saved := filepath.Join(outDir, sanitize(t.Name)+".torrent")
 	_ = writeFileMkdir(saved, personalized)
@@ -665,11 +684,11 @@ func (s *server) publishAndSeed(ctx context.Context, c *Client, r *batchRow, raw
 			savePath = pathDir(r.Path)
 		}
 		if aerr := tc.Add(ctx, personalized, savePath, env.clientCfg.SkipCheck, env.clientCfg.Label); aerr != nil {
-			return "publié", "publié ; client : " + aerr.Error()
+			return stPublished, "publié ; client : " + aerr.Error()
 		}
-		return "publié", "publié et remis en seed"
+		return stPublished, "publié et remis en seed"
 	}
-	return "publié", "publié ; .torrent dans " + path.Base(saved)
+	return stPublished, "publié ; .torrent dans " + path.Base(saved)
 }
 
 // batchDescription : le modèle du membre pour la famille, sinon celui du

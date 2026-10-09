@@ -344,27 +344,31 @@ function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').val
 // Une seule liste : les entrées du dossier, cochables tant qu'aucun lot ne tourne, avec l'état
 // que le lot leur donne. Tri par clic sur un en-tête, second clic pour inverser ; sans clic, l'ordre du dossier.
 st.batchSort=null;st.batchJob=null;
-const bRank=s=>['en cours','attente','publié','simulé','à revoir','erreur','déjà présent','ignoré','','exclu'].indexOf(s||'');
-const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
+// États d'une ligne du lot : les libellés que le serveur envoie (rowStatus dans batch.go), plus « exclu », propre à la page.
+const BS=Object.freeze({wait:'attente',run:'en cours',pub:'publié',sim:'simulé',rev:'à revoir',err:'erreur',present:'déjà présent',ign:'ignoré',off:'exclu'});
+const bRank=s=>[BS.run,BS.wait,BS.pub,BS.sim,BS.rev,BS.err,BS.present,BS.ign,'',BS.off].indexOf(s||'');
+const bBadge=s=>({[BS.wait]:'wait',[BS.run]:'run',[BS.pub]:'pub',[BS.sim]:'pub',[BS.present]:'wait',[BS.ign]:'wait',[BS.rev]:'rev',[BS.err]:'err'})[s]||'wait';
 function renderBatch(j){st.batchJob=j;const rows=j.rows||[];
   if(rows.length||j.running){$('batchSummary').hidden=false;
-    const todo=rows.filter(r=>r.status!=='déjà présent'),done=todo.filter(r=>r.status!=='attente'&&r.status!=='en cours').length,cur=rows.find(r=>r.status==='en cours');
+    const todo=rows.filter(r=>r.status!==BS.present),done=todo.filter(r=>r.status!==BS.wait&&r.status!==BS.run).length,cur=rows.find(r=>r.status===BS.run);
     const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
     $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
     $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…'+(j.note||''):(j.done?'Terminé.':''));
     $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
   renderBatchTable()}
-// Dernière décision connue (historique) : son état et son détail, datés, tant que le lot ne les a pas remplacés.
-function lastSeen(l){if(!l)return {};const d=new Date(l.at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
-  return {status:l.status,detail:`${d}${l.detail?' · '+l.detail:''}`,url:l.url||'',built:l.built,tmdb:l.tmdb,edition:l.edition}}
+// Dernière décision connue (historique), datée, tant que le lot ne l'a pas remplacée. Décochée, l'entrée reste « exclu » et le détail dit pourquoi.
+function lastSeen(l,on){if(!l)return {};const d=new Date(l.at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  return {status:on?l.status:BS.off,detail:`${on?'':l.status+' · '}${d}${l.detail?' · '+l.detail:''}`,url:l.url||'',built:l.built,tmdb:l.tmdb,edition:l.edition}}
+// Déjà sur Draupnirr d'après l'historique : décochée par défaut (le lot la sauterait de toute façon).
+const bDone=l=>!!l&&(l.status===BS.pub||l.status===BS.present);
 function renderBatchTable(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,pk=st.batchPick,
     // Un lot qui tourne sur un autre dossier garde son tableau ; la liste à cocher revient quand il s'arrête.
     p=pk&&pk.key===batchPickKey()&&!(running&&j.root!==pk.path)?pk:null;
   const byPath=new Map(jobRows.map(r=>[r.path,r]));
   // Pendant un lot, l'état vient du serveur ; sinon une entrée décochée est « exclu », même si un lot précédent l'a vue.
   const rows=p?p.entries.map(e=>{const on=p.on.has(e.path),r=byPath.get(e.path);
-      return {...(r&&(running||on)?r:{name:e.name,size:e.size,path:e.path,status:on?'':'exclu',...lastSeen(e.last)}),is_dir:e.is_dir,on,pick:true}}):jobRows;
+      return {...(r&&(running||on)?r:{name:e.name,size:e.size,path:e.path,status:on?'':BS.off,...lastSeen(e.last,on)}),is_dir:e.is_dir,on,pick:true}}):jobRows;
   $('batchPickAll').hidden=$('batchPickNone').hidden=!p||!p.entries.length||running;
   if(p){const n=p.entries.length,k=p.on.size;
     $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.'}
@@ -386,7 +390,7 @@ $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry'
 function batchMode(){const m=$('batchMusic').checked;$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m}
 $('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked=false;batchMode();if(st.batchPick)batchPickLoad().catch(e=>toast(e.message,'err'))};
 $('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
-// Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ, sauf celles déjà publiées par Bifröst (historique).
+// Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ, sauf celles déjà sur Draupnirr d'après l'historique.
 // Seules les cochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
 st.batchPick=null;
 const batchPickKey=()=>$('batchPath').value.trim()+'|'+($('batchMusic').checked?1:0);
@@ -396,7 +400,7 @@ async function batchPickLoad(){const path=$('batchPath').value.trim();if(!path)r
   $('batchPickCount').textContent='Lecture du dossier…';
   const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+($('batchMusic').checked?'&music=1':''));if(key!==batchPickKey())return;
   const prev=st.batchPick&&st.batchPick.key===key?st.batchPick:null;const entries=r.entries||[];
-  st.batchPick={key,path,entries,on:new Set(entries.filter(e=>prev&&prev.entries.some(x=>x.path===e.path)?prev.on.has(e.path):!(e.last&&e.last.status==='publié')).map(e=>e.path))};renderBatchTable()}
+  st.batchPick={key,path,entries,on:new Set(entries.filter(e=>prev&&prev.entries.some(x=>x.path===e.path)?prev.on.has(e.path):!bDone(e.last)).map(e=>e.path))};renderBatchTable()}
 $('batchPickLoad').onclick=()=>run($('batchPickLoad'),()=>batchPickLoad().catch(e=>{$('batchPickCount').textContent=e.message;toast(e.message,'err')}));
 $('batchPath').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('batchPickLoad').click()}});
 $('batchPath').addEventListener('change',()=>{if(st.batchPick&&st.batchPick.key!==batchPickKey())$('batchPickLoad').click()});
