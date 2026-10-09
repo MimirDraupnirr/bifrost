@@ -106,6 +106,8 @@ $('modeDir').onclick=()=>{if(st.mode!=='dir')browse($('path').value).catch(e=>to
 $('modeClient').onclick=()=>fromClient();
 
 try{$('hideOnSite').checked=localStorage.getItem('bf.hideOnSite')!=='0';$('onlyDone').checked=localStorage.getItem('bf.onlyDone')!=='0'}catch(e){}
+// En-tête de colonne triable : so = {k, d} (d = 1 ou -1), ou null.
+const sortHead=(so,key,label,cls='')=>`<button type="button" data-k="${key}" class="${so&&so.k===key?'on':''} ${so&&so.k===key&&so.d<0?'desc':''}" style="${cls}">${label}${ico('sort')}</button>`;
 const stateRank=t=>t.progress<1?1:/missing|error/.test((t.state||'').toLowerCase())?3:/pause|stopped/.test((t.state||'').toLowerCase())?2:0;
 function badge(t){if(t.progress<1)return `<span class="bdg part">${Math.round(t.progress*100)} %</span>`;const k=stateRank(t);return k===3?'<span class="bdg dead">fichiers absents</span>':k===2?'<span class="bdg x">en pause</span>':'<span class="bdg seed">seed</span>'}
 function renderClient(){const q=$('clientQ').value.toLowerCase().trim();const hide=$('hideOnSite').checked,done=$('onlyDone').checked;try{localStorage.setItem('bf.hideOnSite',hide?'1':'0');localStorage.setItem('bf.onlyDone',done?'1':'0')}catch(e){}
@@ -114,7 +116,7 @@ function renderClient(){const q=$('clientQ').value.toLowerCase().trim();const hi
     .sort((a,b)=>d*(k==='size'?a.size-b.size:k==='state'?stateRank(a)-stateRank(b)||a.name.localeCompare(b.name):a.name.localeCompare(b.name)));
   const onSite=all.filter(t=>t.on_draupnirr).length;
   $('clientNote').hidden=false;$('clientNote').className='note';$('clientNote').textContent=`${rows.length} affichée${rows.length>1?'s':''} sur ${all.length}`+(onSite?` · ${onSite} déjà sur Draupnirr`:'')+' · '+st.clientHint;
-  const h=(key,label,cls='')=>`<button type="button" data-k="${key}" class="${k===key?'on':''} ${k===key&&d<0?'desc':''}" style="${cls}">${label}${ico('sort')}</button>`;
+  const h=(...a)=>sortHead(st.sort,...a);
   $('entries').className='list tbl';
   $('entries').innerHTML=`<div class="e h">${h('name','Release')}${h('size','Taille','justify-content:flex-end')}${h('state','État')}<span class="eyebrow" style="line-height:34px">Draupnirr</span></div>`+
     rows.map(t=>`<div class="e ${t.on_draupnirr?'dim':''}" data-h="${esc(t.hash)}"><span class="nm" title="${esc(t.path)}"><b>${esc(t.name)}</b><small>${esc(t.path)}</small></span><span class="r">${human(t.size)}</span><span>${badge(t)}${t.copies>1?` <span class="bdg x" title="mêmes données, ${t.copies} trackers">×${t.copies}</span>`:''}</span><span>${t.on_draupnirr?`<span class="bdg site">${ico('ring')}déjà dessus</span>`:'<span class="mut dash">—</span>'}</span></div>`).join('');
@@ -349,20 +351,23 @@ function renderBatch(j){st.batchJob=j;const rows=j.rows||[];
     const todo=rows.filter(r=>r.status!=='déjà présent'),done=todo.filter(r=>r.status!=='attente'&&r.status!=='en cours').length,cur=rows.find(r=>r.status==='en cours');
     const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
     $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
-    $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…':(j.done?'Terminé.':''));
+    $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…'+(j.note||''):(j.done?'Terminé.':''));
     $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
   renderBatchTable()}
-function renderBatchTable(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,p=st.batchPick&&st.batchPick.key===batchPickKey()?st.batchPick:null;
+function renderBatchTable(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,pk=st.batchPick,
+    // Un lot qui tourne sur un autre dossier garde son tableau ; la liste à cocher revient quand il s'arrête.
+    p=pk&&pk.key===batchPickKey()&&!(running&&j.root!==pk.path)?pk:null;
   const byPath=new Map(jobRows.map(r=>[r.path,r]));
   // Pendant un lot, l'état vient du serveur ; sinon une entrée décochée est « exclu », même si un lot précédent l'a vue.
   const rows=p?p.entries.map(e=>{const on=p.on.has(e.path),r=byPath.get(e.path);
       return {...(r&&(running||on)?r:{name:e.name,size:e.size,path:e.path,status:on?'':'exclu'}),is_dir:e.is_dir,on,pick:true}}):jobRows;
-  if(p){const n=p.entries.length,k=p.on.size;$('batchPickAll').hidden=$('batchPickNone').hidden=n===0||running;
+  $('batchPickAll').hidden=$('batchPickNone').hidden=!p||!p.entries.length||running;
+  if(p){const n=p.entries.length,k=p.on.size;
     $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.'}
   if(!rows.length){$('batchList').innerHTML=`<div class="empty">${ico('folder')}<span>${p?'Ce dossier est vide.':'Choisis un dossier : ses entrées s\'affichent ici, à cocher.'}</span></div>`;return}
   const so=st.batchSort,sorted=so?[...rows].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:so.k==='status'?bRank(a.status)-bRank(b.status)||a.name.localeCompare(b.name):a.name.localeCompare(b.name))):rows;
-  const h=(key,label,cls='')=>`<button type="button" data-k="${key}" class="${so&&so.k===key?'on':''} ${so&&so.k===key&&so.d<0?'desc':''}" style="${cls}">${label}${ico('sort')}</button>`;
+  const h=(...a)=>sortHead(so,...a);
   $('batchList').innerHTML=`<div class="b h"><span></span>${h('name','Release')}${h('size','Taille','justify-content:flex-end')}${h('status','État')}<span class="eyebrow" style="line-height:34px">Détail</span></div>`+sorted.map(r=>`<div class="b ${r.pick&&!r.on?'off':''} ${r.pick&&!running?'pk':''}"><span>${r.pick?`<input type="checkbox" data-p="${esc(r.path)}" ${r.on?'checked':''} ${running?'disabled':''}>`:''}</span><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span>${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'<span class="mut dash">—</span>'}</span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('');
   $('batchList').querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchTable()});
   // Toute la ligne coche ou décoche, sauf un clic sur la case elle-même ou sur un lien.
@@ -372,22 +377,23 @@ async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GE
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
   if(st.batchPick&&st.batchPick.key===batchPickKey()&&st.batchPick.entries.length&&!st.batchPick.on.size)return toast('Tout est décoché : rien à traiter.','warn');
   if(!dry&&!confirm('Publier pour de vrai ce qui est sûr ? Les releases douteuses resteront « à revoir ».'))return;
-  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,exclude:batchExcluded()});
+  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,include:batchIncluded()});
   toast(dry?'Simulation lancée':'Lot lancé','ok');batchPoll()});
 // Musique et « vidéos seulement » s'excluent ; les catégories film/série ne servent pas aux albums.
 function batchMode(){const m=$('batchMusic').checked;$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m}
 $('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked=false;batchMode();if(st.batchPick)batchPickLoad().catch(e=>toast(e.message,'err'))};
 $('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
 // Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ.
-// Seules les décochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
+// Seules les cochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
 st.batchPick=null;
 const batchPickKey=()=>$('batchPath').value.trim()+'|'+($('batchMusic').checked?1:0);
-function batchExcluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return[];return p.entries.filter(e=>!p.on.has(e.path)).map(e=>e.path)}
+// null = pas de liste pour ce dossier : tout y passe. Sinon les seules cochées, pour ne publier que ce qui a été montré.
+function batchIncluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return null;return p.entries.filter(e=>p.on.has(e.path)).map(e=>e.path)}
 async function batchPickLoad(){const path=$('batchPath').value.trim();if(!path)return toast('Choisis un dossier','warn');const key=batchPickKey();
   $('batchPickCount').textContent='Lecture du dossier…';
   const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+($('batchMusic').checked?'&music=1':''));if(key!==batchPickKey())return;
   const prev=st.batchPick&&st.batchPick.key===key?st.batchPick:null;const entries=r.entries||[];
-  st.batchPick={key,entries,on:new Set(entries.filter(e=>!prev||!prev.entries.some(x=>x.path===e.path)||prev.on.has(e.path)).map(e=>e.path))};renderBatchTable()}
+  st.batchPick={key,path,entries,on:new Set(entries.filter(e=>!prev||!prev.entries.some(x=>x.path===e.path)||prev.on.has(e.path)).map(e=>e.path))};renderBatchTable()}
 $('batchPickLoad').onclick=()=>run($('batchPickLoad'),()=>batchPickLoad().catch(e=>{$('batchPickCount').textContent=e.message;toast(e.message,'err')}));
 $('batchPath').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('batchPickLoad').click()}});
 $('batchPath').addEventListener('change',()=>{if(st.batchPick&&st.batchPick.key!==batchPickKey())$('batchPickLoad').click()});

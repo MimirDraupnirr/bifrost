@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -209,8 +208,7 @@ func TestMultipartSendsAnEmptyAlbumType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := io.ReadAll(body)
-	if !strings.Contains(string(raw), `name="facets[type]"`) || strings.Contains(string(raw), `name="year"`) {
-		t.Fatalf("type vidé exprès envoyé, les autres vides non :\n%s", raw)
+	if !strings.Contains(string(body), `name="facets[type]"`) || strings.Contains(string(body), `name="year"`) {
+		t.Fatalf("type vidé exprès envoyé, les autres vides non :\n%s", body)
 	}
 }

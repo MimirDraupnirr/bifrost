@@ -109,7 +109,7 @@ func TestLooseMapAcceptsEmptyPHPArray(t *testing.T) {
 	}
 }
 
-func TestBatchEntriesAndExclude(t *testing.T) {
+func TestBatchEntriesAndInclude(t *testing.T) {
 	root := t.TempDir()
 	for _, f := range []string{"A/a.mkv", "B/b.mkv", "c.mkv"} {
 		p := filepath.Join(root, f)
@@ -130,11 +130,14 @@ func TestBatchEntriesAndExclude(t *testing.T) {
 	if len(names) != 3 || names[0] != "A" || names[1] != "B" || names[2] != "c.mkv" {
 		t.Fatalf("entrées : %v (le dossier vide ne compte pas)", names)
 	}
-	rows := batchRows(entries, map[string]bool{filepath.Join(root, "B"): true})
+	rows := batchRows(entries, map[string]bool{filepath.Join(root, "A"): true, filepath.Join(root, "c.mkv"): true})
 	if len(rows) != 2 || rows[0].Name != "A" || rows[1].Name != "c.mkv" || rows[0].Status != "attente" {
-		t.Fatalf("lignes après exclusion de B : %+v", rows)
+		t.Fatalf("lignes avec B décoché : %+v", rows)
 	}
 	if len(batchRows(entries, nil)) != 3 {
-		t.Fatal("sans exclusion, tout le dossier")
+		t.Fatal("sans sélection, tout le dossier")
+	}
+	if len(batchRows(entries, map[string]bool{})) != 0 {
+		t.Fatal("sélection vide : rien, surtout pas tout le dossier")
 	}
 }
