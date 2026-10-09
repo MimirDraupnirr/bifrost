@@ -47,12 +47,13 @@ type batchJob struct {
 	Published  int         `json:"published"`
 	Review     int         `json:"review"`
 	Skipped    int         `json:"skipped"`
+	Note       string      `json:"note,omitempty"` // pause imposée par Draupnirr avant la première release
 	cancel     context.CancelFunc
 	catFilm    string
 	catTV      string
 	albumSrc   string // source d'un album quand rien ne l'indique (ni .log, ni .cue)
 	publishGap time.Duration
-	exclude    map[string]bool
+	include    map[string]bool // nil = tout le dossier
 }
 
 type batchOpts struct {
@@ -66,9 +67,10 @@ type batchOpts struct {
 	MusicSource string `json:"music_source"` // WEB, CD, VINYL ; vide = « à revoir » faute de source
 	CatFilm     string `json:"category_film"`
 	CatTV       string `json:"category_tv"`
-	// Exclude : entrées du dossier (chemins tels que les liste la source) que
-	// l'utilisateur a décochées. Vide = tout le dossier.
-	Exclude []string `json:"exclude"`
+	// Include : entrées cochées dans la page (chemins tels que les liste la
+	// source). Absent = tout le dossier ; présent, seules celles-ci, même si
+	// d'autres sont apparues depuis : on ne publie que ce qui a été montré.
+	Include []string `json:"include"`
 }
 
 // analysis : la partie de la réponse de /api/upload/analyze que le lot lit.
@@ -234,10 +236,10 @@ func (s *server) batchStart(opts batchOpts) (*batchJob, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	j := &batchJob{Root: opts.Root, DryRun: opts.DryRun, Max: opts.Max, Limit: opts.Limit, OnlyVideo: opts.OnlyVideo && !opts.Music, Music: opts.Music,
 		Running: true, Started: time.Now(), cancel: cancel, catFilm: opts.CatFilm, catTV: opts.CatTV, albumSrc: source, publishGap: 7 * time.Second}
-	if len(opts.Exclude) > 0 {
-		j.exclude = map[string]bool{}
-		for _, p := range opts.Exclude {
-			j.exclude[p] = true
+	if opts.Include != nil {
+		j.include = map[string]bool{}
+		for _, p := range opts.Include {
+			j.include[p] = true
 		}
 	}
 	s.batch = j
@@ -293,13 +295,16 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		env.sourceTag = "DRAUPNIRR"
 	}
 
+	// Les appels du lot attendent les 429 ; avant la première release (déjà
+	// présent ?, modèles), la pause s'affiche sous la progression.
+	ctx = withRetry(ctx, s.pauseNotice(&j.Note))
 	entries, err := batchEntries(ctx, src, j.Root, j.Music)
 	if err != nil {
 		finish(err)
 		return
 	}
 	s.mu.Lock()
-	j.Rows = append(j.Rows, batchRows(entries, j.exclude)...)
+	j.Rows = append(j.Rows, batchRows(entries, j.include)...)
 	s.mu.Unlock()
 
 	// 1. Déjà sur Draupnirr ? Taille exacte, 500 par appel.
@@ -355,7 +360,7 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		r.Status, r.Detail = "en cours", "hachage"
 		s.mu.Unlock()
 		// Une pause imposée par Draupnirr (429) se voit dans la ligne, sinon elle reste figée sur l'étape.
-		rctx := withWaitNotice(ctx, func(d time.Duration) { s.setPause(r, d) })
+		rctx := withRetry(ctx, s.pauseNotice(&r.Detail))
 		status, detail := run(rctx, c, src, j, r, env)
 		s.mu.Lock()
 		r.Status, r.Detail = status, detail
@@ -367,7 +372,10 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		}
 		s.mu.Unlock()
 		if status == "publié" {
-			time.Sleep(j.publishGap) // throttle api-write : 10 publications par minute
+			select { // throttle api-write : 10 publications par minute
+			case <-ctx.Done():
+			case <-time.After(j.publishGap):
+			}
 		}
 	}
 	finish(nil)
@@ -390,11 +398,11 @@ func batchEntries(ctx context.Context, src fileSource, root string, music bool) 
 	return slices.DeleteFunc(entries, func(e DirEntry) bool { return e.Size <= 0 }), nil
 }
 
-// batchRows : une ligne « attente » par entrée restée cochée.
-func batchRows(entries []DirEntry, exclude map[string]bool) []*batchRow {
+// batchRows : une ligne « attente » par entrée retenue (include nil = toutes).
+func batchRows(entries []DirEntry, include map[string]bool) []*batchRow {
 	var rows []*batchRow
 	for _, e := range entries {
-		if !exclude[e.Path] {
+		if include == nil || include[e.Path] {
 			rows = append(rows, &batchRow{Path: e.Path, Name: e.Name, Size: e.Size, Status: "attente"})
 		}
 	}
@@ -403,12 +411,18 @@ func batchRows(entries []DirEntry, exclude map[string]bool) []*batchRow {
 
 const pauseMark = " · Draupnirr limite les appels, reprise dans "
 
-// setPause : ajoute à l'étape en cours l'attente imposée par Draupnirr.
-func (s *server) setPause(r *batchRow, d time.Duration) {
-	s.mu.Lock()
-	step, _, _ := strings.Cut(r.Detail, pauseMark)
-	r.Detail = step + pauseMark + fmt.Sprintf("%d s", int(d.Round(time.Second)/time.Second))
-	s.mu.Unlock()
+// pauseNotice : ajoute à *detail l'attente imposée par Draupnirr, puis la
+// retire à la reprise (d = 0).
+func (s *server) pauseNotice(detail *string) func(time.Duration) {
+	return func(d time.Duration) {
+		s.mu.Lock()
+		step, _, _ := strings.Cut(*detail, pauseMark)
+		if d > 0 {
+			step += pauseMark + fmt.Sprintf("%d s", int((d+time.Second-1)/time.Second))
+		}
+		*detail = step
+		s.mu.Unlock()
+	}
 }
 
 func (s *server) setDetail(r *batchRow, detail string) {
