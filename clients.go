@@ -229,7 +229,12 @@ func (q *qbitClient) Add(ctx context.Context, raw []byte, savePath string, skipC
 	w := multipart.NewWriter(&buf)
 	part, _ := w.CreateFormFile("torrents", "release.torrent")
 	part.Write(raw)
-	fields := map[string]string{"savepath": savePath, "autoTMM": "false", "paused": "false", "stopped": "false", "category": label}
+	// Disposition et condition d'arrêt imposées : sinon les défauts du membre
+	// s'appliquent (« Créer un sous-dossier » : fichiers cherchés ailleurs,
+	// 0 % ; « Arrêter après vérification » : torrent arrêté).
+	// ponytail: ignorés avant 4.3.2 (contentLayout) et 4.5 (stopCondition).
+	fields := map[string]string{"savepath": savePath, "autoTMM": "false", "paused": "false", "stopped": "false", "category": label,
+		"contentLayout": "Original", "stopCondition": "None"}
 	if skipCheck {
 		fields["skip_checking"] = "true"
 	}
