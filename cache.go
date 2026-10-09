@@ -87,10 +87,7 @@ func entrySize(ctx context.Context, src fileSource, p string) (int64, error) {
 // makeTorrentCached : le .torrent depuis le cache, sinon haché puis mis en cache.
 // `size` peut être 0 : il est alors mesuré. Renvoie aussi si le cache a servi.
 func (s *server) makeTorrentCached(ctx context.Context, src fileSource, p, tag string, size int64, progress progressFunc) ([]byte, bool, error) {
-	source := "local"
-	if r, ok := src.(*remoteSource); ok {
-		source = r.cfg.User + "@" + r.cfg.Host
-	}
+	source := sourceName(src)
 	if size <= 0 {
 		if sz, err := entrySize(ctx, src, p); err == nil {
 			size = sz
