@@ -355,9 +355,9 @@ function renderBatch(j){st.batchJob=j;const rows=j.rows||[];
     $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
   $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
   renderBatchTable()}
-// Dernière décision connue (historique) : rappelée dans le détail tant que le lot ne l'a pas remplacée.
+// Dernière décision connue (historique) : son état et son détail, datés, tant que le lot ne les a pas remplacés.
 function lastSeen(l){if(!l)return {};const d=new Date(l.at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
-  return {detail:`Dernière fois (${d}) : ${l.status}${l.detail?' · '+l.detail:''}`,url:l.url||'',built:l.built,tmdb:l.tmdb,edition:l.edition}}
+  return {status:l.status,detail:`${d}${l.detail?' · '+l.detail:''}`,url:l.url||'',built:l.built,tmdb:l.tmdb,edition:l.edition}}
 function renderBatchTable(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,pk=st.batchPick,
     // Un lot qui tourne sur un autre dossier garde son tableau ; la liste à cocher revient quand il s'arrête.
     p=pk&&pk.key===batchPickKey()&&!(running&&j.root!==pk.path)?pk:null;
