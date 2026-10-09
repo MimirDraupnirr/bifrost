@@ -367,14 +367,17 @@ $('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked
 $('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
 // Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ.
 // Seules les décochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
-st.batchPick=null;
+st.batchPick=null;st.batchPickSort=null;
 const batchPickKey=()=>$('batchPath').value.trim()+'|'+($('batchMusic').checked?1:0);
 function batchExcluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return[];return p.entries.filter(e=>!p.on.has(e.path)).map(e=>e.path)}
 function renderBatchPick(){const p=st.batchPick,n=p.entries.length,k=p.entries.filter(e=>p.on.has(e.path)).length;
   $('batchPick').hidden=false;$('batchPickAll').hidden=$('batchPickNone').hidden=n===0;
   $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.';
-  $('batchPick').innerHTML=n?p.entries.map(e=>`<label class="e ${e.is_dir?'dir':''} ${p.on.has(e.path)?'':'off'}"><input type="checkbox" data-p="${esc(e.path)}" ${p.on.has(e.path)?'checked':''}>${ico(e.is_dir?'folder':'file')}<span class="n" title="${esc(e.path)}">${esc(e.name)}</span><span class="sz">${human(e.size)}</span></label>`).join(''):'<div class="empty"><span>Ce dossier est vide.</span></div>';
-  [...$('batchPick').querySelectorAll('input')].forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchPick()})}
+  const so=st.batchPickSort,list=so?[...p.entries].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:a.name.localeCompare(b.name))):p.entries;
+  const h=(key,label,cls='')=>`<button type="button" data-k="${key}" class="${so&&so.k===key?'on':''} ${so&&so.k===key&&so.d<0?'desc':''} ${cls}">${label}${ico('sort')}</button>`;
+  $('batchPick').innerHTML=n?`<div class="e ph">${h('name','Release','grow')}${h('size','Taille')}</div>`+list.map(e=>`<label class="e ${e.is_dir?'dir':''} ${p.on.has(e.path)?'':'off'}"><input type="checkbox" data-p="${esc(e.path)}" ${p.on.has(e.path)?'checked':''}>${ico(e.is_dir?'folder':'file')}<span class="n" title="${esc(e.path)}">${esc(e.name)}</span><span class="sz">${human(e.size)}</span></label>`).join(''):'<div class="empty"><span>Ce dossier est vide.</span></div>';
+  [...$('batchPick').querySelectorAll('input')].forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchPick()})
+  $('batchPick').querySelectorAll('.ph button').forEach(b=>b.onclick=()=>{st.batchPickSort=st.batchPickSort&&st.batchPickSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchPickSort.d}:{k:b.dataset.k,d:1};renderBatchPick()})}
 async function batchPickLoad(){const path=$('batchPath').value.trim();if(!path)return toast('Choisis un dossier','warn');const key=batchPickKey();
   $('batchPick').hidden=false;$('batchPick').innerHTML='<div class="empty"><span>Lecture du dossier…</span></div>';
   const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+($('batchMusic').checked?'&music=1':''));if(key!==batchPickKey())return;
