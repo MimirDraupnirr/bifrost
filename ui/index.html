@@ -315,6 +315,10 @@
         <button id="batchStop" type="button" hidden><svg class="i"><use href="#i-x"/></svg>Arrêter</button>
         <button class="primary" id="batchStart" type="button"><svg class="i"><use href="#i-chevron-right"/></svg>Lancer</button>
       </div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="row" style="align-items:center"><span class="mut" id="batchPickCount">Liste le dossier pour choisir ce qui entre dans le lot ; sinon, tout y passe.</span><span class="grow"></span><button class="ghost" id="batchPickAll" type="button" hidden>Tout cocher</button><button class="ghost" id="batchPickNone" type="button" hidden>Tout décocher</button><button id="batchPickLoad" type="button"><svg class="i"><use href="#i-refresh"/></svg>Lister le dossier</button></div>
+        <div class="list" id="batchPick" hidden></div>
+      </div>
       <div id="batchSummary" hidden style="display:flex;flex-direction:column;gap:8px">
         <div class="row" style="align-items:center"><span class="mut" id="batchCount"></span><span class="grow"></span><b id="batchPct"></b></div>
         <div class="bar"><div id="batchProg" style="width:0"></div></div>

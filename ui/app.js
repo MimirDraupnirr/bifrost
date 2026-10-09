@@ -338,7 +338,7 @@ st.batchTimer=null;
 function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').value||'';
   const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
   if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
-  batchMode();batchPoll()}
+  batchMode();batchPoll();if($('batchPath').value&&!st.batchPick)batchPickLoad().catch(()=>{})}
 const bBadge=s=>({'attente':'wait','en cours':'run','publié':'pub','simulé':'pub','déjà présent':'wait','ignoré':'wait','à revoir':'rev','erreur':'err'})[s]||'wait';
 function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){return}
   $('batchSummary').hidden=false;
@@ -351,11 +351,32 @@ function renderBatch(j){const rows=j.rows||[];if(!rows.length&&!j.running){retur
   $('batchList').innerHTML='<div class="b h"><span>Release</span><span class="r">Taille</span><span>État</span><span>Détail</span></div>'+rows.map(r=>`<div class="b"><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span><span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span></span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('')}
 async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
+  if(st.batchPick&&st.batchPick.key===batchPickKey()&&st.batchPick.entries.length&&!st.batchPick.on.size)return toast('Tout est décoché : rien à traiter.','warn');
   if(!dry&&!confirm('Publier pour de vrai ce qui est sûr ? Les releases douteuses resteront « à revoir ».'))return;
-  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value});
+  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,exclude:batchExcluded()});
   toast(dry?'Simulation lancée':'Lot lancé','ok');batchPoll()});
 // Musique et « vidéos seulement » s'excluent ; les catégories film/série ne servent pas aux albums.
 function batchMode(){const m=$('batchMusic').checked;$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m}
-$('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked=false;batchMode()};
+$('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked=false;batchMode();if(st.batchPick)batchPickLoad().catch(e=>toast(e.message,'err'))};
 $('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
+// Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ.
+// Seules les décochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
+st.batchPick=null;
+const batchPickKey=()=>$('batchPath').value.trim()+'|'+($('batchMusic').checked?1:0);
+function batchExcluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return[];return p.entries.filter(e=>!p.on.has(e.path)).map(e=>e.path)}
+function renderBatchPick(){const p=st.batchPick,n=p.entries.length,k=p.entries.filter(e=>p.on.has(e.path)).length;
+  $('batchPick').hidden=false;$('batchPickAll').hidden=$('batchPickNone').hidden=n===0;
+  $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.';
+  $('batchPick').innerHTML=n?p.entries.map(e=>`<label class="e ${e.is_dir?'dir':''} ${p.on.has(e.path)?'':'off'}"><input type="checkbox" data-p="${esc(e.path)}" ${p.on.has(e.path)?'checked':''}>${ico(e.is_dir?'folder':'file')}<span class="n" title="${esc(e.path)}">${esc(e.name)}</span><span class="sz">${human(e.size)}</span></label>`).join(''):'<div class="empty"><span>Ce dossier est vide.</span></div>';
+  [...$('batchPick').querySelectorAll('input')].forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchPick()})}
+async function batchPickLoad(){const path=$('batchPath').value.trim();if(!path)return toast('Choisis un dossier','warn');const key=batchPickKey();
+  $('batchPick').hidden=false;$('batchPick').innerHTML='<div class="empty"><span>Lecture du dossier…</span></div>';
+  const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+($('batchMusic').checked?'&music=1':''));if(key!==batchPickKey())return;
+  const prev=st.batchPick&&st.batchPick.key===key?st.batchPick:null;const entries=r.entries||[];
+  st.batchPick={key,entries,on:new Set(entries.filter(e=>!prev||!prev.entries.some(x=>x.path===e.path)||prev.on.has(e.path)).map(e=>e.path))};renderBatchPick()}
+$('batchPickLoad').onclick=()=>run($('batchPickLoad'),()=>batchPickLoad().catch(e=>{$('batchPick').innerHTML=`<div class="empty"><span>${esc(e.message)}</span></div>`;toast(e.message,'err')}));
+$('batchPath').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('batchPickLoad').click()}});
+$('batchPath').addEventListener('change',()=>{if(st.batchPick&&st.batchPick.key!==batchPickKey())$('batchPickLoad').click()});
+$('batchPickAll').onclick=()=>{st.batchPick.entries.forEach(e=>st.batchPick.on.add(e.path));renderBatchPick()};
+$('batchPickNone').onclick=()=>{st.batchPick.on.clear();renderBatchPick()};
 $('batchStop').onclick=()=>api('POST','/ui/batch/stop').then(()=>toast('Arrêt demandé après la release en cours','info'));

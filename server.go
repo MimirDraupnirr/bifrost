@@ -92,6 +92,7 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/batch/start", s.batchStartHandler)
 	s.mux.HandleFunc("POST /ui/batch/stop", s.batchStopHandler)
 	s.mux.HandleFunc("GET /ui/batch/status", s.batchStatusHandler)
+	s.mux.HandleFunc("GET /ui/batch/list", s.batchListHandler)
 	s.mux.HandleFunc("GET /ui/crossseed/scan", s.crossScan)
 	s.mux.HandleFunc("POST /ui/crossseed/add", s.crossAdd)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
@@ -1071,6 +1072,22 @@ func (s *server) batchStartHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"root": j.Root, "dry_run": j.DryRun})
+}
+
+// batchListHandler : le contenu du dossier que le lot parcourrait, pour que la
+// page propose une case à cocher par entrée.
+func (s *server) batchListHandler(w http.ResponseWriter, r *http.Request) {
+	root := r.URL.Query().Get("path")
+	if root == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dossier requis"})
+		return
+	}
+	entries, err := batchEntries(r.Context(), s.source(), root, r.URL.Query().Get("music") == "1")
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": root, "entries": entries})
 }
 
 func (s *server) batchStopHandler(w http.ResponseWriter, r *http.Request) {

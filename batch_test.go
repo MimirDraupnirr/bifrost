@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -103,5 +106,35 @@ func TestLooseMapAcceptsEmptyPHPArray(t *testing.T) {
 	raw = `{"ok":true,"nomenclature":{"name_facets":{"source":"WEB"},"facets":{"source":{"value":"WEB","origin":"declared"}}}}`
 	if err := json.Unmarshal([]byte(raw), &a); err != nil || a.Nomenclature.NameFacets["source"] != "WEB" || a.Nomenclature.Facets["source"].Origin != "declared" {
 		t.Fatalf("objet normal : %v %+v", err, a.Nomenclature)
+	}
+}
+
+func TestBatchEntriesAndExclude(t *testing.T) {
+	root := t.TempDir()
+	for _, f := range []string{"A/a.mkv", "B/b.mkv", "c.mkv"} {
+		p := filepath.Join(root, f)
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte("data"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = os.Mkdir(filepath.Join(root, "Vide"), 0o755)
+	entries, err := batchEntries(context.Background(), localSource{}, root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name)
+	}
+	if len(names) != 3 || names[0] != "A" || names[1] != "B" || names[2] != "c.mkv" {
+		t.Fatalf("entrées : %v (le dossier vide ne compte pas)", names)
+	}
+	rows := batchRows(entries, map[string]bool{filepath.Join(root, "B"): true})
+	if len(rows) != 2 || rows[0].Name != "A" || rows[1].Name != "c.mkv" || rows[0].Status != "attente" {
+		t.Fatalf("lignes après exclusion de B : %+v", rows)
+	}
+	if len(batchRows(entries, nil)) != 3 {
+		t.Fatal("sans exclusion, tout le dossier")
 	}
 }

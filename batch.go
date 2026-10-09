@@ -52,6 +52,7 @@ type batchJob struct {
 	catTV      string
 	albumSrc   string // source d'un album quand rien ne l'indique (ni .log, ni .cue)
 	publishGap time.Duration
+	exclude    map[string]bool
 }
 
 type batchOpts struct {
@@ -65,6 +66,9 @@ type batchOpts struct {
 	MusicSource string `json:"music_source"` // WEB, CD, VINYL ; vide = « à revoir » faute de source
 	CatFilm     string `json:"category_film"`
 	CatTV       string `json:"category_tv"`
+	// Exclude : entrées du dossier (chemins tels que les liste la source) que
+	// l'utilisateur a décochées. Vide = tout le dossier.
+	Exclude []string `json:"exclude"`
 }
 
 // analysis : la partie de la réponse de /api/upload/analyze que le lot lit.
@@ -230,6 +234,12 @@ func (s *server) batchStart(opts batchOpts) (*batchJob, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	j := &batchJob{Root: opts.Root, DryRun: opts.DryRun, Max: opts.Max, Limit: opts.Limit, OnlyVideo: opts.OnlyVideo && !opts.Music, Music: opts.Music,
 		Running: true, Started: time.Now(), cancel: cancel, catFilm: opts.CatFilm, catTV: opts.CatTV, albumSrc: source, publishGap: 7 * time.Second}
+	if len(opts.Exclude) > 0 {
+		j.exclude = map[string]bool{}
+		for _, p := range opts.Exclude {
+			j.exclude[p] = true
+		}
+	}
 	s.batch = j
 	go s.runBatch(ctx, j)
 	return j, nil
@@ -283,23 +293,13 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		env.sourceTag = "DRAUPNIRR"
 	}
 
-	// Les entrées du dossier ; en musique, ses albums à toute profondeur.
-	var entries []DirEntry
-	if j.Music {
-		entries, err = src.Albums(ctx, j.Root)
-	} else {
-		entries, err = src.List(ctx, j.Root)
-	}
+	entries, err := batchEntries(ctx, src, j.Root, j.Music)
 	if err != nil {
 		finish(err)
 		return
 	}
 	s.mu.Lock()
-	for _, e := range entries {
-		if e.Size > 0 {
-			j.Rows = append(j.Rows, &batchRow{Path: e.Path, Name: e.Name, Size: e.Size, Status: "attente"})
-		}
-	}
+	j.Rows = append(j.Rows, batchRows(entries, j.exclude)...)
 	s.mu.Unlock()
 
 	// 1. Déjà sur Draupnirr ? Taille exacte, 500 par appel.
@@ -369,6 +369,34 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		}
 	}
 	finish(nil)
+}
+
+// batchEntries : les releases candidates du dossier, telles que la page les
+// propose à cocher et que le lot les parcourt — ses entrées non vides ; en
+// musique, ses albums à toute profondeur.
+func batchEntries(ctx context.Context, src fileSource, root string, music bool) ([]DirEntry, error) {
+	var entries []DirEntry
+	var err error
+	if music {
+		entries, err = src.Albums(ctx, root)
+	} else {
+		entries, err = src.List(ctx, root)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(entries, func(e DirEntry) bool { return e.Size <= 0 }), nil
+}
+
+// batchRows : une ligne « attente » par entrée restée cochée.
+func batchRows(entries []DirEntry, exclude map[string]bool) []*batchRow {
+	var rows []*batchRow
+	for _, e := range entries {
+		if !exclude[e.Path] {
+			rows = append(rows, &batchRow{Path: e.Path, Name: e.Name, Size: e.Size, Status: "attente"})
+		}
+	}
+	return rows
 }
 
 func (s *server) setDetail(r *batchRow, detail string) {
