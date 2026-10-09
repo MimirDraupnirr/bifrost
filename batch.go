@@ -30,6 +30,7 @@ type batchRow struct {
 	Edition  string `json:"edition,omitempty"` // édition MusicBrainz d'un album
 	ID       string `json:"id,omitempty"`
 	URL      string `json:"url,omitempty"`
+	InfoHash string `json:"infohash,omitempty"`
 }
 
 type batchJob struct {
@@ -54,6 +55,7 @@ type batchJob struct {
 	albumSrc   string // source d'un album quand rien ne l'indique (ni .log, ni .cue)
 	publishGap time.Duration
 	include    map[string]bool // nil = tout le dossier
+	source     string          // "local" ou user@host, pour l'historique
 }
 
 type batchOpts struct {
@@ -278,7 +280,10 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			j.Error = err.Error()
 		}
+		end := histEvent{Kind: "batch_end", Batch: batchID(j), Source: j.source, Path: j.Root, Detail: j.Error, DryRun: j.DryRun,
+			Data: map[string]any{"published": j.Published, "review": j.Review, "skipped": j.Skipped, "stopped": errors.Is(err, context.Canceled)}}
 		s.mu.Unlock()
+		s.hist.record(end)
 	}
 	c, err := s.client()
 	if err != nil {
@@ -286,6 +291,12 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		return
 	}
 	src := s.source()
+	s.mu.Lock()
+	j.source = sourceName(src)
+	s.mu.Unlock()
+	s.hist.record(histEvent{Kind: "batch_start", Batch: batchID(j), Source: sourceName(src), Path: j.Root, DryRun: j.DryRun,
+		Data: map[string]any{"max": j.Max, "limit": j.Limit, "only_video": j.OnlyVideo, "music": j.Music, "music_source": j.albumSrc,
+			"category_film": j.catFilm, "category_tv": j.catTV, "included": len(j.include), "all": j.include == nil}})
 	s.mu.Lock()
 	env := batchEnv{clientCfg: s.cfg.Client, remote: s.cfg.Source == "ssh"}
 	env.sourceTag, _ = s.me["source_tag"].(string)
@@ -324,14 +335,19 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			present[m.Size] = m.Name
 		}
 	}
+	var seen []histEvent
 	s.mu.Lock()
 	for _, r := range j.Rows {
 		if name, ok := present[r.Size]; ok {
 			r.Status, r.Detail = "déjà présent", name
 			j.Skipped++
+			seen = append(seen, rowEvent(j, r))
 		}
 	}
 	s.mu.Unlock()
+	for _, e := range seen {
+		s.hist.record(e)
+	}
 
 	// 2. Une release à la fois.
 	env.templates = s.loadTemplates(ctx, c)
@@ -370,7 +386,9 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		case "à revoir":
 			j.Review++
 		}
+		e := rowEvent(j, r)
 		s.mu.Unlock()
+		s.hist.record(e)
 		if status == "publié" {
 			select { // throttle api-write : 10 publications par minute
 			case <-ctx.Done():
@@ -379,6 +397,18 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		}
 	}
 	finish(nil)
+}
+
+func batchID(j *batchJob) string { return j.Started.Format(time.RFC3339) }
+
+// rowEvent : la décision du lot pour une ligne, telle qu'elle s'affiche (sous s.mu).
+func rowEvent(j *batchJob, r *batchRow) histEvent {
+	kind := "decision"
+	if r.Status == "publié" {
+		kind = "publish"
+	}
+	return histEvent{Kind: kind, Batch: batchID(j), Source: j.source, Path: r.Path, Name: r.Name, Size: r.Size, InfoHash: r.InfoHash,
+		Status: r.Status, Detail: r.Detail, Category: r.Category, Built: r.Built, TMDB: r.TMDB, Edition: r.Edition, ID: r.ID, URL: r.URL, DryRun: j.DryRun}
 }
 
 // batchEntries : les releases candidates du dossier, telles que la page les
@@ -509,6 +539,11 @@ func (s *server) batchTorrent(ctx context.Context, src fileSource, r *batchRow, 
 		s.setDetail(r, "torrent repris du cache")
 	}
 	t, err := parseTorrent(raw)
+	if err == nil {
+		s.mu.Lock()
+		r.InfoHash = t.InfoHash
+		s.mu.Unlock()
+	}
 	return raw, t, err
 }
 

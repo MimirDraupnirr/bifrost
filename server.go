@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,8 @@ type server struct {
 	batch *batchJob
 	// .torrent déjà créés (cache.go).
 	cache *torrentCache
+	// Ce que Bifröst a fait et décidé (history.go).
+	hist *history
 	// Dernière vérification de mise à jour (24 h de cache).
 	update        *release
 	updateChecked time.Time
@@ -66,7 +69,7 @@ type job struct {
 }
 
 func newServer(cfg *Config, configPath string) *server {
-	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}, sess: newSessions(), cache: newTorrentCache(configPath)}
+	s := &server{mux: http.NewServeMux(), cfg: cfg, configPath: configPath, jobs: map[string]*job{}, sess: newSessions(), cache: newTorrentCache(configPath), hist: newHistory(configPath)}
 	sub, _ := fs.Sub(uiFS, "ui")
 	s.mux.Handle("/", http.FileServer(http.FS(sub)))
 	// Jeton déjà enregistré : on se connecte tout de suite, sans attendre la
@@ -93,6 +96,7 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/batch/stop", s.batchStopHandler)
 	s.mux.HandleFunc("GET /ui/batch/status", s.batchStatusHandler)
 	s.mux.HandleFunc("GET /ui/batch/list", s.batchListHandler)
+	s.mux.HandleFunc("GET /ui/history", s.historyHandler)
 	s.mux.HandleFunc("GET /ui/crossseed/scan", s.crossScan)
 	s.mux.HandleFunc("POST /ui/crossseed/add", s.crossAdd)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
@@ -740,7 +744,42 @@ func (s *server) publish(w http.ResponseWriter, r *http.Request) {
 	} else if cerr != nil {
 		resp["client_error"] = cerr.Error()
 	}
+	s.hist.record(publishEvent(s.source(), j, in, res, resp))
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// publishEvent : une publication faite à la main, avec les choix du membre
+// (catégorie, œuvre, facettes) ; la description et le synopsis restent sur Draupnirr.
+func publishEvent(src fileSource, j *job, in map[string]any, res *UploadResult, resp map[string]any) histEvent {
+	e := histEvent{Kind: "publish", Source: sourceName(src), Path: j.Path, Status: "publié", ID: res.ID, URL: fmt.Sprint(resp["url"])}
+	if j.Torrent != nil {
+		e.Name, e.Size, e.InfoHash = j.Torrent.Name, j.Torrent.Size, j.Torrent.InfoHash
+	}
+	e.Category, _ = in["category"].(string)
+	choices := map[string]any{}
+	if meta, ok := in["meta"].(map[string]any); ok {
+		for k, v := range meta {
+			if k != "synopsis" && k != "poster_url" {
+				choices[k] = v
+			}
+		}
+		if t, _ := meta["work_title"].(string); t != "" {
+			e.TMDB = t
+			if y := fmt.Sprint(meta["year"]); y != "" && y != "<nil>" {
+				e.TMDB += " (" + y + ")"
+			}
+		}
+	}
+	e.Data = choices
+	switch {
+	case resp["client_error"] != nil:
+		e.Detail = "publié ; client : " + fmt.Sprint(resp["client_error"])
+	case resp["client_added"] != nil:
+		e.Detail = "publié et remis en seed"
+	default:
+		e.Detail = "publié"
+	}
+	return e
 }
 
 func sanitize(name string) string {
@@ -1008,7 +1047,7 @@ func (s *server) crossAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	cfg := s.cfg.Client
+	cfg, site := s.cfg.Client, s.cfg.SiteURL
 	s.mu.Unlock()
 	tc, err := newTorrentClient(cfg)
 	if err != nil || tc == nil {
@@ -1051,6 +1090,8 @@ func (s *server) crossAdd(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.hist.record(histEvent{Kind: "cross_seed", Source: sourceName(s.source()), Path: in.Path, Name: t.Name, Size: t.Size, InfoHash: t.InfoHash,
+		ID: in.ID, URL: site + "/torrents/" + in.ID, Detail: "ajouté au client sur " + savePath})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name": t.Name, "infohash": t.InfoHash, "save_path": savePath})
 }
 
@@ -1082,12 +1123,35 @@ func (s *server) batchListHandler(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dossier requis"})
 		return
 	}
-	entries, err := batchEntries(r.Context(), s.source(), root, r.URL.Query().Get("music") == "1")
+	src := s.source()
+	entries, err := batchEntries(r.Context(), src, root, r.URL.Query().Get("music") == "1")
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": root, "entries": entries})
+	// La dernière décision connue par entrée : la page l'affiche et décoche ce qui est déjà publié.
+	type listed struct {
+		DirEntry
+		Last *histEvent `json:"last,omitempty"`
+	}
+	out := make([]listed, len(entries))
+	for i, e := range entries {
+		out[i] = listed{e, s.hist.lastFor(sourceName(src), e.Path, e.Size)}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": root, "entries": out})
+}
+
+// historyHandler : les derniers événements (200 par défaut, 2000 au plus), filtrables par ?q=.
+func (s *server) historyHandler(w http.ResponseWriter, r *http.Request) {
+	limit := 200
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 {
+		limit = min(n, 2000)
+	}
+	events := s.hist.recent(limit, r.URL.Query().Get("q"))
+	if events == nil {
+		events = []histEvent{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"events": events})
 }
 
 func (s *server) batchStopHandler(w http.ResponseWriter, r *http.Request) {
