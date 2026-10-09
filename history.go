@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -20,16 +19,26 @@ import (
 // ponytail: pas de purge — quelques centaines d'octets par release ; tronquer
 // le fichier à la main s'il devient encombrant.
 
+type histKind string
+
+const (
+	evBatchStart histKind = "batch_start"
+	evBatchEnd   histKind = "batch_end"
+	evDecision   histKind = "decision"
+	evPublish    histKind = "publish"
+	evCrossSeed  histKind = "cross_seed"
+)
+
 type histEvent struct {
 	At       time.Time `json:"at"`
-	Kind     string    `json:"kind"` // batch_start · batch_end · decision · publish · cross_seed
+	Kind     histKind  `json:"kind"`
 	Batch    string    `json:"batch,omitempty"`
 	Source   string    `json:"source,omitempty"` // "local" ou user@host, comme cache.go
 	Path     string    `json:"path,omitempty"`
 	Name     string    `json:"name,omitempty"`
 	Size     int64     `json:"size,omitempty"`
 	InfoHash string    `json:"infohash,omitempty"`
-	Status   string    `json:"status,omitempty"`
+	Status   rowStatus `json:"status,omitempty"`
 	Detail   string    `json:"detail,omitempty"`
 	Category string    `json:"category,omitempty"`
 	Built    string    `json:"built,omitempty"`
@@ -80,8 +89,10 @@ func (h *history) load() {
 }
 
 // remember : seules les décisions et publications font l'état d'une release.
+// Data (les choix du membre) reste dans le fichier : la liste du lot n'en a pas besoin.
 func (h *history) remember(e histEvent) {
-	if (e.Kind == "decision" || e.Kind == "publish") && e.Path != "" {
+	if (e.Kind == evDecision || e.Kind == evPublish) && e.Path != "" {
+		e.Data = nil
 		h.last[histKey(e.Source, e.Path)] = e
 	}
 }
@@ -133,45 +144,6 @@ func (h *history) lastFor(source, p string, size int64) *histEvent {
 		return nil
 	}
 	return &e
-}
-
-// recent : les derniers événements, du plus récent au plus ancien ; q filtre
-// sur le nom, le chemin, le nom calculé ou le détail (sans casse).
-func (h *history) recent(limit int, q string) []histEvent {
-	if h == nil {
-		return nil
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	f, err := os.Open(h.path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	q = strings.ToLower(strings.TrimSpace(q))
-	var out []histEvent
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	for sc.Scan() {
-		var e histEvent
-		if json.Unmarshal(sc.Bytes(), &e) != nil {
-			continue
-		}
-		if q != "" && !strings.Contains(strings.ToLower(e.Name+" "+e.Path+" "+e.Built+" "+e.Detail), q) {
-			continue
-		}
-		out = append(out, e)
-		if limit > 0 && len(out) > 2*limit {
-			out = out[len(out)-limit:]
-		}
-	}
-	if limit > 0 && len(out) > limit {
-		out = out[len(out)-limit:]
-	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
-	return out
 }
 
 // sourceName : la source des fichiers telle que l'historique et le cache la nomment.

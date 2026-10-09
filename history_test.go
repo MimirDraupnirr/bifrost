@@ -12,17 +12,20 @@ import (
 func TestHistoryRecordReload(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "config.json")
 	h := newHistory(cfg)
-	h.record(histEvent{Kind: "batch_start", Batch: "b1", Path: "/data"})
-	h.record(histEvent{Kind: "decision", Source: "local", Path: "/data/A", Name: "A", Size: 10, Status: "à revoir", Detail: "année absente"})
-	h.record(histEvent{Kind: "decision", Source: "local", Path: "/data/B", Name: "B", Size: 20, Status: "simulé"})
-	h.record(histEvent{Kind: "publish", Source: "local", Path: "/data/A", Name: "A", Size: 10, Status: "publié", ID: "42"})
+	h.record(histEvent{Kind: evBatchStart, Batch: "b1", Path: "/data"})
+	h.record(histEvent{Kind: evDecision, Source: "local", Path: "/data/A", Name: "A", Size: 10, Status: stReview, Detail: "année absente"})
+	h.record(histEvent{Kind: evDecision, Source: "local", Path: "/data/B", Name: "B", Size: 20, Status: stSimulated})
+	h.record(histEvent{Kind: evPublish, Source: "local", Path: "/data/A", Name: "A", Size: 10, Status: stPublished, ID: "42", Data: map[string]any{"work_title": "A"}})
 
 	if info, err := os.Stat(h.path); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("history.jsonl attendu en 0600 : %v %v", info, err)
 	}
+	if raw, _ := os.ReadFile(h.path); !strings.Contains(string(raw), `"work_title"`) {
+		t.Fatal("les choix du membre restent dans le fichier, seule la mémoire les oublie")
+	}
 	// Relu depuis le disque : la dernière décision l'emporte.
 	h2 := newHistory(cfg)
-	if e := h2.lastFor("local", "/data/A", 10); e == nil || e.Status != "publié" || e.ID != "42" {
+	if e := h2.lastFor("local", "/data/A", 10); e == nil || e.Status != stPublished || e.ID != "42" || e.Data != nil {
 		t.Fatalf("dernière décision de A : %+v", e)
 	}
 	if e := h2.lastFor("local", "/data/A", 11); e != nil {
@@ -31,19 +34,8 @@ func TestHistoryRecordReload(t *testing.T) {
 	if e := h2.lastFor("me@box", "/data/A", 10); e != nil {
 		t.Fatal("autre source : rien de connu")
 	}
-	if e := h2.lastFor("local", "/data/B", 20); e == nil || e.Status != "simulé" {
+	if e := h2.lastFor("local", "/data/B", 20); e == nil || e.Status != stSimulated {
 		t.Fatalf("B : %+v", e)
-	}
-
-	all := h2.recent(0, "")
-	if len(all) != 4 || all[0].Kind != "publish" || all[3].Kind != "batch_start" {
-		t.Fatalf("ordre attendu du plus récent au plus ancien : %+v", all)
-	}
-	if got := h2.recent(2, ""); len(got) != 2 || got[0].ID != "42" {
-		t.Fatalf("limite : %+v", got)
-	}
-	if got := h2.recent(0, "ANNÉE"); len(got) != 1 || got[0].Path != "/data/A" {
-		t.Fatalf("filtre : %+v", got)
 	}
 }
 
@@ -55,10 +47,10 @@ func TestHistoryIgnoresBrokenLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := newHistory(cfg)
-	if e := h.lastFor("local", "/x", 5); e == nil || e.Status != "erreur" {
+	if e := h.lastFor("local", "/x", 5); e == nil || e.Status != stError {
 		t.Fatalf("ligne valide perdue : %+v", e)
 	}
-	h.record(histEvent{Kind: "decision", Source: "local", Path: "/y", Size: 1, Status: "simulé"})
+	h.record(histEvent{Kind: evDecision, Source: "local", Path: "/y", Size: 1, Status: stSimulated})
 	raw, _ := os.ReadFile(path)
 	if !strings.Contains(string(raw), "\n{\"at\"") {
 		t.Fatalf("l'ajout doit repartir à la ligne : %q", raw)
@@ -70,8 +62,8 @@ func TestHistoryIgnoresBrokenLines(t *testing.T) {
 
 func TestHistoryNilIsSilent(t *testing.T) {
 	var h *history
-	h.record(histEvent{Kind: "decision"})
-	if h.lastFor("local", "/x", 1) != nil || h.recent(10, "") != nil {
+	h.record(histEvent{Kind: evDecision})
+	if h.lastFor("local", "/x", 1) != nil {
 		t.Fatal("un historique absent ne renvoie rien")
 	}
 }
@@ -82,7 +74,7 @@ func TestBatchListCarriesLastDecision(t *testing.T) {
 	_ = os.MkdirAll(rel, 0o755)
 	_ = os.WriteFile(filepath.Join(rel, "a.mkv"), make([]byte, 5000), 0o644)
 	s := newServer(&Config{Source: "local"}, filepath.Join(t.TempDir(), "config.json"))
-	s.hist.record(histEvent{Kind: "publish", Source: "local", Path: rel, Size: 5000, Status: "publié", URL: "https://x/torrents/1"})
+	s.hist.record(histEvent{Kind: evPublish, Source: "local", Path: rel, Size: 5000, Status: stPublished, URL: "https://x/torrents/1"})
 
 	rec := httptest.NewRecorder()
 	s.batchListHandler(rec, httptest.NewRequest("GET", "/ui/batch/list?path="+dir, nil))
@@ -95,7 +87,7 @@ func TestBatchListCarriesLastDecision(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Entries) != 1 {
 		t.Fatalf("liste : %v %s", err, rec.Body)
 	}
-	if l := out.Entries[0].Last; l == nil || l.Status != "publié" {
+	if l := out.Entries[0].Last; l == nil || l.Status != stPublished {
 		t.Fatalf("dernière décision absente : %s", rec.Body)
 	}
 }
