@@ -46,13 +46,21 @@ Ce que tu seedes déjà pour d'autres trackers et qui existe sur Draupnirr se re
 
 ### Lot : un dossier entier, sans y toucher
 
-Tu donnes un dossier, Bifröst passe chaque entrée au crible : déjà sur Draupnirr → ignorée ; sinon hachage, MediaInfo, œuvre TMDB, fiche calculée par Draupnirr, **publication seulement si tout est sûr** — œuvre certaine (titre ou titre original, même année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir » avec la raison, à finir dans l'onglet Uploader. Simulation par défaut, plafonds d'examen et de publication, filtre « vidéos seulement », arrêt propre, et une pause entre deux publications pour respecter l'API du site. Une entrée au-delà du plafond de taille (300 Go par défaut) est ignorée sans être hachée, et un dossier sans fichier à sa racine (un dossier de releases, pas une release) part « à revoir ». Les liens symboliques sont suivis : taille et hachage sont ceux des fichiers pointés.
+Tu donnes un dossier, Bifröst passe chaque entrée au crible : déjà sur Draupnirr → ignorée ; sinon hachage, MediaInfo, œuvre TMDB, fiche calculée par Draupnirr, **publication seulement si tout est sûr** : œuvre certaine (titre ou titre original, même année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir » avec la raison, à finir dans l'onglet Uploader. Simulation par défaut, plafonds d'examen et de publication, filtre « vidéos seulement », arrêt propre, et une pause entre deux publications pour respecter l'API du site. Une entrée au-delà du plafond de taille (300 Go par défaut) est ignorée sans être hachée, et un dossier sans fichier à sa racine (un dossier de releases, pas une release) part « à revoir ». Les liens symboliques sont suivis : taille et hachage sont ceux des fichiers pointés.
 
 Le tableau du lot se range en onglets par état (nouveau, en attente, simulé, à revoir, revu, erreur, déjà présent, ignoré, publié), avec recherche et cases à cocher : seules les lignes cochées de l'onglet affiché partent dans le lot. La **loupe** de chaque ligne montre les fichiers, le rapport MediaInfo et la fiche telle que Draupnirr la calcule ; on y choisit à la main l'œuvre TMDB (ou l'édition MusicBrainz) quand le lot s'est trompé ou n'a rien trouvé, on corrige la saison et les facettes, ou on **ignore** la release pour de bon. Une ligne dont l'œuvre a été choisie passe « revu » et le lot suivant prend ce choix tel quel au lieu de chercher. « Revoir à la suite » enchaîne les lignes affichées dans la loupe (flèches, Entrée, I) ; « Une œuvre pour ces N » rattache d'un coup plusieurs saisons d'une même série, chacune gardant la sienne. La saison est lue dans le nom (`S06`, `S01E03`, `S02E01-E02`) et transmise à Draupnirr : une série sans saison dans son nom part « à revoir ».
 
+<p align="center">
+  <img src="docs/screens/lot.jpg" alt="Le lot : onglets par état, recherche, cases à cocher, dernière décision et détail pour chaque release" width="820">
+</p>
+
+<p align="center">
+  <img src="docs/screens/loupe.jpg" alt="La loupe : fichiers, MediaInfo, œuvre TMDB choisie à la main, revue en série avec file et raccourcis clavier" width="820">
+</p>
+
 ### Musique : un album, une discographie
 
-Un dossier de pistes (FLAC, MP3, AAC, Ogg, Opus, WAV, APE, WavPack, AIFF) est reconnu comme un **album** : MediaInfo lit chaque piste, Draupnirr écrit le nom selon la nomenclature, compose le NFO avec la liste des pistes et propose la sous-catégorie. L'étape 2 cherche l'édition sur **MusicBrainz** (pochettes, « N pistes, comme ton dossier ») ; des tags Picard la donnent d'office. Source, type et team se déclarent à côté, et le modèle de présentation Musique — le tien, sinon celui du site — reçoit artiste, album, format et pistes.
+Un dossier de pistes (FLAC, MP3, AAC, Ogg, Opus, WAV, APE, WavPack, AIFF) est reconnu comme un **album** : MediaInfo lit chaque piste, Draupnirr écrit le nom selon la nomenclature, compose le NFO avec la liste des pistes et propose la sous-catégorie. L'étape 2 cherche l'édition sur **MusicBrainz** (pochettes, « N pistes, comme ton dossier ») ; des tags Picard la donnent d'office. Source, type et team se déclarent à côté, et le modèle de présentation Musique (le tien, sinon celui du site) reçoit artiste, album, format et pistes.
 
 En lot, l'option **Musique** fait de chaque dossier d'album une release, à toute profondeur : une discographie de 14 albums donne 14 releases, et `CD1`, `Disc 2`… restent avec leur album. L'édition MusicBrainz n'est retenue que si elle est la seule à avoir le même titre, le même artiste et autant de pistes ; sinon l'album part nommé d'après ses tags, ou va « à revoir » s'il manque l'artiste, l'album, l'année ou la source (un `.log` ou un `.cue` vaut CD ; sinon la source par défaut du lot).
 
@@ -100,7 +108,7 @@ Un [`docker-compose.example.yml`](docker-compose.example.yml) est fourni, avec W
 
 ## Sécurité et vie privée
 
-**Aucun identifiant ne transite par le serveur de Draupnirr.** Bifröst tourne sur ta machine ; la seule chose qu'il envoie au site est ce que tu publies — le `.torrent`, la fiche, la description, le rapport MediaInfo (le texte, jamais le fichier) — authentifié par le jeton API que Draupnirr t'a lui-même remis. Tout le reste reste chez toi :
+**Aucun identifiant ne transite par le serveur de Draupnirr.** Bifröst tourne sur ta machine ; la seule chose qu'il envoie au site est ce que tu publies : le `.torrent`, la fiche, la description, le rapport MediaInfo (le texte, jamais le fichier), authentifié par le jeton API que Draupnirr t'a lui-même remis. Tout le reste reste chez toi :
 
 | | Où ça vit | Ce que Draupnirr en voit |
 |---|---|---|
