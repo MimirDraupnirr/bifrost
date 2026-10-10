@@ -55,17 +55,17 @@ func TestPickWorkAndDecide(t *testing.T) {
 func TestBatchDescriptionFallsBackToDefault(t *testing.T) {
 	a := &analysis{Name: "X.2023.1080p.WEB-GRP", SizeHuman: "1 Go", FileCount: 1, GuessedType: "movie"}
 	pick := &tmdbResult{ID: 7, Title: "X", Year: float64(2023), Overview: "Synopsis.", PosterURL: "https://img/p.jpg"}
-	desc, format := batchDescription(a, pick, nil, "films-film", "nra")
+	desc, format := batchDescription(a, pick, kindMovie, "", nil, "films-film", "nra")
 	if format != "bbcode" || !contains(desc, "[b]X[/b]") || !contains(desc, "themoviedb.org/movie/7") || contains(desc, "{{") {
 		t.Fatalf("description par défaut : %s", desc)
 	}
 	fam := "films"
 	site := []presTemplate{{Name: "Fiche film", Body: "Site {{titre}} par {{uploadeur}}", Format: "bbcode", Family: &fam, IsDefault: true, Site: true}}
-	if desc, _ = batchDescription(a, pick, site, "films-film", "nra"); desc != "Site X par nra" {
+	if desc, _ = batchDescription(a, pick, kindMovie, "", site, "films-film", "nra"); desc != "Site X par nra" {
 		t.Fatalf("sans modèle du membre, celui du site remplace la présentation sobre : %q", desc)
 	}
 	tpl := append([]presTemplate{{Body: "Mon modèle {{titre}} {{annee}}", Format: "html", Family: &fam, IsDefault: true}}, site...)
-	desc, format = batchDescription(a, pick, tpl, "films-film", "nra")
+	desc, format = batchDescription(a, pick, kindMovie, "", tpl, "films-film", "nra")
 	if format != "html" || desc != "Mon modèle X 2023" {
 		t.Fatalf("modèle du membre : %q %s", desc, format)
 	}

@@ -91,3 +91,81 @@ func TestBatchListCarriesLastDecision(t *testing.T) {
 		t.Fatalf("dernière décision absente : %s", rec.Body)
 	}
 }
+
+func TestBatchChoiceIsRememberedAndForgotten(t *testing.T) {
+	cfg := filepath.Join(t.TempDir(), "config.json")
+	s := newServer(&Config{Source: "local"}, cfg)
+	post := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		s.batchChoiceHandler(rec, httptest.NewRequest("POST", "/ui/batch/choice", strings.NewReader(body)))
+		return rec
+	}
+	if rec := post(`{"path":"/d/Black Lagoon","size":10,"choice":{"tmdb_id":37854,"title":"Black Lagoon"}}`); rec.Code != 400 {
+		t.Fatalf("type TMDB manquant : %d", rec.Code)
+	}
+	if rec := post(`{"path":"/d/Black Lagoon","size":10}`); rec.Code != 200 || s.hist.lastFor("local", "/d/Black Lagoon", 10) != nil {
+		t.Fatalf("oubli sans choix : %d, historique touché", rec.Code)
+	}
+	if rec := post(`{"path":"/d/Vide","size":0,"choice":{"ignored":true}}`); rec.Code != 200 || s.hist.choiceFor("local", "/d/Vide", 0) == nil {
+		t.Fatalf("dossier vide (taille 0) ignoré depuis la loupe : %d", rec.Code)
+	}
+	if rec := post(`{"path":"/d/Black Lagoon","name":"Black Lagoon","size":10,"choice":{"tmdb_id":37854,"tmdb_type":"tv","title":"Black Lagoon","year":2006}}`); rec.Code != 200 {
+		t.Fatalf("choix refusé : %d %s", rec.Code, rec.Body)
+	}
+	// Relu depuis le disque : la ligne est « revu » et le lot reprend l'œuvre.
+	h := newHistory(cfg)
+	if e := h.lastFor("local", "/d/Black Lagoon", 10); e == nil || e.Status != stReviewed || e.TMDB != "Black Lagoon (2006)" || e.Choice != nil {
+		t.Fatalf("état après choix : %+v", e)
+	}
+	if c := h.choiceFor("local", "/d/Black Lagoon", 10); c == nil || c.TMDBID != 37854 || c.TMDBType != "tv" {
+		t.Fatalf("œuvre choisie : %+v", c)
+	}
+	if h.choiceFor("local", "/d/Black Lagoon", 11) != nil {
+		t.Fatal("taille différente : le choix ne vaut plus")
+	}
+	// Une décision du lot ne fait pas oublier le choix.
+	s.hist.record(histEvent{Kind: evDecision, Source: "local", Path: "/d/Black Lagoon", Size: 10, Status: stReviewed, Detail: "simulé, publiable : X"})
+	if s.hist.choiceFor("local", "/d/Black Lagoon", 10) == nil {
+		t.Fatal("choix perdu après une simulation")
+	}
+	post(`{"path":"/d/Black Lagoon","size":10}`)
+	if s.hist.choiceFor("local", "/d/Black Lagoon", 10) != nil {
+		t.Fatal("choix oublié mais encore appliqué")
+	}
+	if e := newHistory(cfg).lastFor("local", "/d/Black Lagoon", 10); e == nil || e.Status != stReview {
+		t.Fatalf("après oubli : %+v", e)
+	}
+}
+
+func TestReviewedStatusKeepsHumanChoices(t *testing.T) {
+	for _, c := range []struct {
+		in     rowStatus
+		chosen bool
+		want   rowStatus
+	}{
+		{stSimulated, true, stReviewed}, {stReview, true, stReviewed}, {stPublished, true, stPublished},
+		{stError, true, stError}, {stSimulated, false, stSimulated},
+	} {
+		if got, _ := reviewedStatus(c.in, "x", c.chosen); got != c.want {
+			t.Errorf("%s (choisi %v) : %s, attendu %s", c.in, c.chosen, got, c.want)
+		}
+	}
+}
+
+func TestEpisodeOf(t *testing.T) {
+	for in, want := range map[string]string{
+		"Alexandra.Ehle.S06.FRENCH.AD.1080p.WEB.H264-THESYNDiCATE": "S06",
+		"Show.s01e03.720p":        "S01E03",
+		"Show.S02E01-E02.MULTi":   "S02E01-E02",
+		"Show.S01E01E02.720p":     "S01E01-E02",
+		"Show.S1E1-2.FRENCH":      "S01E01-E02",
+		"Show.S01E100.1080p":      "S01E100",
+		"Show S3 FRENCH":          "S03",
+		"Film.2019.1080p.SSE":     "",
+		"Blade.Runner.2049.1080p": "",
+	} {
+		if got := episodeOf(in); got != want {
+			t.Errorf("episodeOf(%q) = %q, veut %q", in, got, want)
+		}
+	}
+}

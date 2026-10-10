@@ -91,7 +91,10 @@ type DirEntry struct {
 	Size  int64  `json:"size"`
 }
 
-func listDir(path string) ([]DirEntry, error) {
+func listDir(path string) ([]DirEntry, error) { return listDirSizes(path, true) }
+
+// listDirSizes : dirSizes faux = dossiers sans taille (0), sans les parcourir.
+func listDirSizes(path string, dirSizes bool) ([]DirEntry, error) {
 	if path == "" {
 		home, _ := os.UserHomeDir()
 		path = home
@@ -112,7 +115,10 @@ func listDir(path string) ([]DirEntry, error) {
 		if fi, err := os.Stat(e.Path); err == nil {
 			e.IsDir, e.Size = fi.IsDir(), fi.Size()
 			if e.IsDir {
-				e.Size = dirSize(e.Path)
+				e.Size = 0
+				if dirSizes {
+					e.Size = dirSize(e.Path)
+				}
 			}
 		}
 		out = append(out, e)

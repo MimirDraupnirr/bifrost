@@ -12,6 +12,8 @@ function toast(text,kind='info'){const t=document.createElement('div');t.classNa
 // run : désactive le bouton le temps de la requête ; l'erreur part en toast.
 async function run(btn,fn){if(btn.disabled)return;btn.disabled=true;btn.classList.add('busy');try{return await fn()}catch(e){toast(e.message,'err')}finally{btn.disabled=false;btn.classList.remove('busy')}}
 const onSubmit=(form,fn)=>form.addEventListener('submit',e=>{e.preventDefault();fn()});
+// Types d'œuvre TMDB : tmdbKind dans history.go.
+const TK=Object.freeze({movie:'movie',tv:'tv'});
 
 // ---- le rail : 4 étapes, on peut revenir sur une étape déjà atteinte ----
 function go(n){st.step=n;st.max=Math.max(st.max,n);
@@ -36,7 +38,7 @@ async function load(){const s=await api('GET','/ui/state');st.state=s;const c=s.
   $('mi').innerHTML=s.mediainfo?ico('check')+'<span>mediainfo présent : les facettes seront lues dans les fichiers.</span>':ico('alert')+'<span>mediainfo absent — installe-le : <code>'+esc(s.mediainfo_hint)+'</code>. Sans lui, les facettes sont déclarées à la main et Ratatosk les vérifie.</span>';
   document.querySelector(`input[name=src][value=${c.source==='ssh'?'ssh':'local'}]`).checked=true;$('sshbox').hidden=c.source!=='ssh';
   $('cl_type').value=c.client?.type||'';$('cl_url').value=c.client?.url||'';$('cl_user').value=c.client?.user||'';$('cl_label').value=c.client?.label||'';$('cl_skip').checked=!!c.client?.skip_check;$('cl_paths').value=(c.client?.path_map||[]).map(m=>m.from+' = '+m.to).join('\n');
-  $('autoUpd').checked=!!s.auto_update;
+  $('autoUpd').checked=!!s.auto_update;$('batchIntro').open=!c.batch_intro_hidden;
   if(s.update){$('upd').hidden=false;$('updTitle').textContent='Bifröst '+s.update.version+' est disponible (tu as '+s.version+')';
     let notes=s.update.notes||'';
     if(s.in_docker)notes+='\nEn Docker : docker pull ghcr.io/mimirdraupnirr/bifrost && docker compose up -d';
@@ -67,6 +69,13 @@ onSubmit($('connectForm'),()=>run($('connectBtn'),async()=>{$('connectErr').text
 onSubmit($('acctForm'),()=>run($('connect2'),async()=>{$('acctErr').textContent='';try{await connect(false,$('site2').value,$('token2').value);$('site').value=$('site2').value;toast('Connecté avec le nouveau jeton','ok');drawer.close()}catch(e){$('acctErr').textContent=e.message}}));
 
 onSubmit($('outForm'),()=>run($('saveOut'),async()=>{await api('POST','/ui/settings',{out_dir:$('outdir').value});toast('Dossier enregistré','ok')}));
+// Explication du Lot repliée ou non : gardée dans les paramètres ; repliée, le tableau prend la place.
+// Repliée, le tableau gagne exactement la hauteur du texte : le panneau garde sa taille.
+// Mesurée une fois par largeur (le texte se replie selon elle), sans animer la flèche pendant la mesure.
+function batchIntroFit(){const d=$('batchIntro'),w=d.offsetWidth;if(!w||w===st.introW)return;const was=d.open;d.classList.add('measure');
+  d.open=true;const a=d.offsetHeight;d.open=false;const h=a-d.offsetHeight;d.open=was;d.offsetHeight;d.classList.remove('measure');
+  if(h>0){st.introW=w;$('batchList').style.setProperty('--intro',h+'px')}}
+$('batchIntro').addEventListener('toggle',()=>{const h=!$('batchIntro').open;if(st.state&&!!st.state.config.batch_intro_hidden===h)return;if(st.state)st.state.config.batch_intro_hidden=h;api('POST','/ui/settings',{batch_intro_hidden:h}).catch(e=>toast(e.message,'err'))});
 $('autoUpd').onchange=()=>api('POST','/ui/settings',{auto_update:$('autoUpd').checked}).then(()=>toast($('autoUpd').checked?'Mises à jour automatiques activées':'Mises à jour automatiques désactivées','ok'),e=>toast(e.message,'err'));
 $('updBtn').onclick=()=>run($('updBtn'),async()=>{const r=await api('POST','/ui/update');$('updTitle').textContent=r.status;$('updBtn').hidden=true;setTimeout(()=>location.reload(),4000)});
 
@@ -143,30 +152,51 @@ function stage(step,err){const order=['hachage','mediainfo','analyse'];const i=o
   [...$('prep').querySelectorAll('.stages span')].forEach((s,k)=>{s.className=err&&k===i?'err':step==='prêt'||k<i?'done':k===i?'on':''});
   $('prog').parentElement.classList.toggle('indet',step!=='hachage'&&step!=='prêt'&&!err)}
 $('prepare').onclick=()=>run($('prepare'),async()=>{const r=await api('POST','/ui/prepare',{path:st.sel,category:$('category').value,hash:st.hash||''});st.hash=null;st.job=r.job;
-  $('prep').hidden=false;reveal($('prep'),'center');$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';st.picked=null;st.mbPicked=null;st.typesTouched=false;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
+  $('prep').hidden=false;reveal($('prep'),'center');$('prog').style.width='0';stage('hachage');$('prepStep').textContent='';$('facets').innerHTML='';$('advFacets').innerHTML='';st.picked=null;st.mbPicked=null;st.typesTouched=false;st.captures=[];st.images=[];$('description').value='';$('nfo').value='';$('preview').innerHTML='';$('imgs').innerHTML='';$('imgsNote').hidden=false;st.max=1;$('publish').disabled=false;
   await poll()});
-function poll(){return new Promise((res,rej)=>{(async function tick(){try{const j=await api('GET','/ui/job/'+st.job);const[d,t]=j.progress;
-    if(j.step==='hachage'){$('prog').style.width=(t?d/t*100:0)+'%';$('prepStep').textContent=t?human(d)+' / '+human(t):(j.exported?'export depuis le client…':'')}else{$('prog').style.width='100%';$('prepStep').textContent=j.step==='mediainfo'?'Lecture des pistes…':j.step==='analyse'?'Analyse par Draupnirr…':''}
-    stage(j.step,!!j.error);
-    if(!j.done){setTimeout(tick,500);return}
-    if(j.error){$('prepStep').innerHTML='<span class="warn-text" style="color:var(--err)">'+esc(j.error)+'</span>';res();return}
-    st.miErr=j.mediainfo_error||'';st.analysis=j.analysis;st.torrentName=j.torrent.name;$('prep').hidden=true;
+// Préparation (hachage → mediainfo → analyse) suivie jusqu'au bout ; partagée avec la loupe du lot.
+const jobLine=j=>{const[d,t]=j.progress;return j.step==='hachage'?(t?human(d)+' / '+human(t):(j.exported?'export depuis le client…':'')):j.step==='mediainfo'?'Lecture des pistes…':j.step==='analyse'?'Analyse par Draupnirr…':''};
+function waitJob(id,onTick,alive=()=>true){return new Promise((res,rej)=>{(async function tick(){try{if(!alive())return;const j=await api('GET','/ui/job/'+id);onTick(j);
+    if(!j.done){setTimeout(tick,500);return}res(j)}catch(e){rej(e)}})()})}
+function poll(){return waitJob(st.job,j=>{const[d,t]=j.progress;$('prog').style.width=(j.step==='hachage'?(t?d/t*100:0):100)+'%';$('prepStep').textContent=jobLine(j);stage(j.step,!!j.error)}).then(j=>{
+    if(j.error){$('prepStep').innerHTML='<span class="warn-text" style="color:var(--err)">'+esc(j.error)+'</span>';return}
+    st.miErr=j.mediainfo_error||'';st.analysis=j.analysis;st.torrentName=j.torrent.name;$('prep').hidden=true;upPanels(j);
     if(j.category)$('category').value=j.category;musicMode(!!j.analysis.music);go(2);
-    if(st.music){musicStart(j.analysis);res();return}
-    showAnalysis(j.analysis);
-    $('q').value=j.analysis.clean_title||j.torrent.name;$('kind').value=j.analysis.guessed_type==='tv'?'tv':'movie';$('year').value=j.analysis.year||'';$('work_title').value=j.analysis.clean_title||'';$('episode').value='';$('episode_title').value='';
-    $('tmdb').innerHTML='';search();res()}catch(e){rej(e)}})()})}
+    if(st.music){musicStart(j.analysis);return}
+    $('kind').value=j.analysis.guessed_type===TK.tv?TK.tv:TK.movie;showAnalysis(j.analysis);
+    $('q').value=j.analysis.clean_title||j.torrent.name;$('year').value=j.analysis.year||'';$('work_title').value=j.analysis.clean_title||'';$('episode').value=$('kind').value===TK.tv?(j.episode||''):'';$('episode_title').value='';
+    $('tmdb').innerHTML='';search()})}
 
 // ---- étape 2 : œuvre et fiche ----
+// Fiche partagée avec la loupe du lot : puces (lu / déclaré) et champs des facettes.
+const FACET_LAB={source:'Source',edition:'Édition',group:'Team',languages:'Langues',resolution:'Résolution',video_codec:'Codec vidéo',bit_depth:'Profondeur',hdr:'HDR',audio_codec:'Codec audio',channels:'Canaux'};
+const facetChips=n=>Object.entries(n.facets||{}).map(([k,v])=>`<span class="chip ${v.origin}" title="${esc(FACET_LAB[k]||k)}">${esc(v.value)}</span>`).join('')+(n.media?Object.values(n.media).filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join(''):'');
+// vals : valeurs imposées (sinon celles de l'analyse). Liste fermée → select, sinon champ libre.
+function facetGrid(n,keys,vals={}){const voc=n.vocabulary||{};return keys.map(k=>{const v=vals[k]??n.facets?.[k]?.value??'',lab=esc(FACET_LAB[k]||k),list=voc[k]||(k==='source'||k==='edition'?[]:null);
+  return list?`<label>${lab}<select data-f="${esc(k)}"><option value="">—</option>${[...new Set([...list,...(v&&!list.includes(v)?[v]:[])])].map(t=>`<option ${v===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`:`<label>${lab}<input data-f="${esc(k)}" value="${esc(v)}"></label>`}).join('')}
+const advVals=()=>{const o={};$('advFacets').querySelectorAll('[data-f][data-t]').forEach(el=>{if(el.value)o[el.dataset.f]=el.value});return o};
+const facetVals=box=>{const o={};box.querySelectorAll('[data-f]').forEach(el=>{if(el.value)o[el.dataset.f]=el.value});return o};
 function showAnalysis(a){const n=a.nomenclature;
   $('warnings').innerHTML=(st.miErr?msg('warn','MediaInfo : '+esc(st.miErr)+' — les facettes restent déclarées, Ratatosk les vérifiera.'):'')+(a.warnings||[]).map(w=>msg('warn',esc(w))).join('')+botMsgs(a)||msg('ok','Aucun avertissement : Ratatosk n\'a rien à redire.');
   if(!n){$('built').textContent=a.name;$('chips').innerHTML='';$('legend').hidden=true;$('facets').innerHTML='';$('missing').textContent='';return}
   $('built').textContent=n.built_name||a.name;$('missing').textContent=n.missing?.length?'Manque : '+n.missing.join(', ')+(n.missing_title?' · titre de l\'œuvre':''):(n.missing_title?'Choisis l\'œuvre (titre)':'');
-  $('chips').innerHTML=Object.entries(n.facets||{}).map(([k,v])=>`<span class="chip ${v.origin}" title="${esc(k)}">${esc(v.value)}</span>`).join('')+(n.media?Object.values(n.media).filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join(''):'');$('legend').hidden=!$('chips').children.length;
-  if(!$('facets').children.length){const voc=n.vocabulary||{};const decl=['source','edition','group'];
-    $('facets').innerHTML=decl.map(f=>f==='group'?`<label>Team<input data-f="group" value="${esc(n.facets?.group?.value||'')}"></label>`:`<label>${f==='source'?'Source':'Édition'}<select data-f="${f}"><option value="">—</option>${(voc[f]||[]).map(t=>`<option ${n.facets?.[f]?.value===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`).join('');
-    $('facets').querySelectorAll('[data-f]').forEach(el=>el.onchange=reanalyze)}}
-function sheet(){const facets={};$('facets').querySelectorAll('[data-f]').forEach(el=>{if(el.value)facets[el.dataset.f]=el.value});
+  $('chips').innerHTML=facetChips(n);$('legend').hidden=!$('chips').children.length;
+  if(!$('facets').children.length){$('facets').innerHTML=facetGrid(n,['source','edition','group']);
+    $('facets').querySelectorAll('[data-f]').forEach(el=>el.onchange=reanalyze)}
+  if(!$('advFacets').children.length){const keys=[...new Set(['languages',...Object.keys(n.facets||{})])].filter(k=>!['source','edition','group'].includes(k));
+    $('advFacets').innerHTML='<label>Catégorie<select id="advCat"></select></label>'+facetGrid(n,keys);
+    $('advCat').onchange=()=>{$('category').value=$('advCat').value;reanalyze()};
+    $('advFacets').querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{el.dataset.t=1;reanalyze()})}
+  advCatFill()}
+// Sous-catégories de la famille du type TMDB (film ou série), comme dans la loupe ; la catégorie
+// hors de cette famille, elle passe à celle du lot pour ce type (Série TV, Film), ou à la première sous-catégorie.
+function advCatFill(){const s=$('advCat');if(!s)return;const k=$('kind').value,def=bdCat(k)||(k===TK.tv?'series':'films');s.innerHTML=catFamily(def);
+  const opts=[...s.options].map(o=>o.value),v=$('category').value;
+  if(opts.includes(v)){s.value=v;return}
+  const nv=opts.includes(def)&&def.includes('-')?def:opts.find(o=>o.includes('-'))||opts[0];if(!nv)return;
+  $('category').value=nv;s.value=nv;if(st.job&&!st.music)reanalyze()}
+$('kind').addEventListener('change',advCatFill);
+function sheet(){const facets={...advVals(),...facetVals($('facets'))};
   // Album : le type n'est envoyé qu'une fois touché (absent = types de l'édition MusicBrainz, vide = aucun).
   if(st.music){if(st.typesTouched)facets.type=[...$('types').querySelectorAll('.on')].map(b=>b.dataset.t).join(',');
     return{category:$('category').value,facets,musicbrainz_id:st.mbPicked?.id,release_name:st.analysis?.music?.built_name||undefined}}
@@ -186,7 +216,13 @@ async function images(){const r=await api('GET','/ui/tmdb-images?id='+st.picked.
   [...$('imgs').children].forEach(im=>im.onclick=()=>{im.classList.toggle('sel');const u=st.images[im.dataset.i].url;st.captures=im.classList.contains('sel')?[...st.captures,u]:st.captures.filter(x=>x!==u);if(im.classList.contains('sel')&&st.step===3)insert(TAGS[$('format').value].img(u)[0]+'\n')})}
 
 // ---- étape 2, version album (docs/25 §6) ----
-function musicMode(on){st.music=on;$('videoWork').hidden=on;$('videoFields').hidden=on;$('musicWork').hidden=!on;$('types').hidden=!on;$('tracks').hidden=!on;
+// Étape 2 : arborescence (un dossier seulement) et MediaInfo de la préparation, repliées comme dans la loupe.
+function upPanels(j){st.up={job:j.id||st.job,miErr:j.mediainfo_error||'',mi:null};const t=$('upTree'),ft=t.querySelector('.ft'),m=$('upMi');
+  t.hidden=!(j.main_file&&j.main_file!==j.path);ft.dataset.path=j.path;delete ft.dataset.done;ft.innerHTML='';if(t.open&&!t.hidden)ftLoad(ft);
+  m.querySelector('.mib').innerHTML='';m.querySelector('summary .sz').textContent='';miShow(m,st.up)}
+$('upTree').addEventListener('toggle',()=>{if($('upTree').open)ftLoad($('upTree').querySelector('.ft'))});
+$('upMi').addEventListener('toggle',()=>miShow($('upMi'),st.up));
+function musicMode(on){st.music=on;$('upAdv').hidden=on;$('videoWork').hidden=on;$('videoFields').hidden=on;$('musicWork').hidden=!on;$('types').hidden=!on;$('tracks').hidden=!on;
   $('p2title').textContent=on?'L\'album et la fiche technique':'L\'œuvre et la fiche technique'}
 // Ratatosk parle en block / warn / info.
 function botMsgs(a,skip=[]){return(a.bot||[]).filter(b=>!skip.includes(b.code)).map(b=>msg(b.level==='block'?'err':b.level==='warn'?'warn':'info','Ratatosk : '+esc(b.message))).join('')}
@@ -242,7 +278,7 @@ function vars(){const v=videoVars(),a=st.analysis||{},al=a.music;if(!al)return v
     nb_pistes:String(al.track_count||''),musicbrainz_url:al.musicbrainz_url||''}}
 function videoVars(){const a=st.analysis||{},n=a.nomenclature||{},f=n.facets||{},v=k=>f[k]?.value||'',m=n.media||{},fmt=$('format').value,p=st.picked||{};
   const caps=st.captures.map(u=>fmt==='html'?`<img src="${u}" alt="">`:`[img]${u}[/img]`).join('\n');
-  return{titre:p.title||a.clean_title||'',annee:$('year').value,type:$('kind').value==='tv'?'Série':'Film',synopsis:p.overview||'',affiche:p.poster_url||'',tmdb_url:p.id?`https://www.themoviedb.org/${$('kind').value}/${p.id}`:'',nom_release:n.built_name||a.name||'',taille:a.size_human||'',nb_fichiers:String(a.file_count||''),fichiers:(a.files||[]).map(x=>`${x.path} (${x.size_human})`).join('\n'),episode:$('episode').value,titre_episode:$('episode_title').value,tags:(a.suggested_tags||[]).join(', '),source:v('source'),edition:v('edition'),team:v('group'),langues:v('languages'),resolution:v('resolution'),codec_video:v('video_codec'),profondeur:v('bit_depth'),hdr:v('hdr'),codec_audio:v('audio_codec'),canaux:v('channels'),duree:m.duration||'',debit:m.bitrate||'',sous_titres:m.subtitles||'',mediainfo:'',nfo:n.nfo||'',captures:caps,uploadeur:$('anonymous').checked?'Anonyme':(st.me?.name||''),date:new Date().toLocaleDateString('fr-FR')}}
+  return{titre:p.title||a.clean_title||'',annee:$('year').value,type:$('kind').value===TK.tv?'Série':'Film',synopsis:p.overview||'',affiche:p.poster_url||'',tmdb_url:p.id?`https://www.themoviedb.org/${$('kind').value}/${p.id}`:'',nom_release:n.built_name||a.name||'',taille:a.size_human||'',nb_fichiers:String(a.file_count||''),fichiers:(a.files||[]).map(x=>`${x.path} (${x.size_human})`).join('\n'),episode:$('episode').value,titre_episode:$('episode_title').value,tags:(a.suggested_tags||[]).join(', '),source:v('source'),edition:v('edition'),team:v('group'),langues:v('languages'),resolution:v('resolution'),codec_video:v('video_codec'),profondeur:v('bit_depth'),hdr:v('hdr'),codec_audio:v('audio_codec'),canaux:v('channels'),duree:m.duration||'',debit:m.bitrate||'',sous_titres:m.subtitles||'',mediainfo:'',nfo:n.nfo||'',captures:caps,uploadeur:$('anonymous').checked?'Anonyme':(st.me?.name||''),date:new Date().toLocaleDateString('fr-FR')}}
 function render(body,d){let out=body;for(;;){const s=out.indexOf('{{#');if(s<0)break;const e=out.indexOf('}}',s);const name=out.slice(s+3,e);const close='{{/'+name+'}}';const c=out.indexOf(close,s);if(c<0)break;out=out.slice(0,s)+(d[name]?out.slice(e+2,c):'')+out.slice(c+close.length)}
   return out.replace(/\{\{\s*([a-z_]+)\s*\}\}/g,(m,k)=>d[k]??'').replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
 function regen(){const t=st.templates[$('tpl').value];if(!t){return}$('format').value=t.format;$('description').value=render(t.body,vars());schedulePreview()}
@@ -336,74 +372,324 @@ $('crossAll').onclick=()=>run($('crossAll'),async()=>{const todo=st.cross.filter
 
 
 // ---- Vue Lot ----
-st.batchTimer=null;
+st.batchTimer=null;st.batchKind='video';st.batchTab='*';st.batchSort=null;st.batchJob=null;st.batchPick=null;st.batchOffSet=null;st.batchSel=[];
 function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').value||'';
   const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
   if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
   batchMode();batchPoll();if($('batchPath').value&&!st.batchPick)batchPickLoad().catch(()=>{})}
-// Une seule liste : les entrées du dossier, cochables tant qu'aucun lot ne tourne, avec l'état
-// que le lot leur donne. Tri par clic sur un en-tête, second clic pour inverser ; sans clic, l'ordre du dossier.
-st.batchSort=null;st.batchJob=null;
-// États d'une ligne du lot : les libellés que le serveur envoie (rowStatus dans batch.go), plus « exclu », propre à la page.
-const BS=Object.freeze({wait:'attente',run:'en cours',pub:'publié',sim:'simulé',rev:'à revoir',err:'erreur',present:'déjà présent',ign:'ignoré',off:'exclu'});
-const bRank=s=>[BS.run,BS.wait,BS.pub,BS.sim,BS.rev,BS.err,BS.present,BS.ign,'',BS.off].indexOf(s||'');
-const bBadge=s=>({[BS.wait]:'wait',[BS.run]:'run',[BS.pub]:'pub',[BS.sim]:'pub',[BS.present]:'wait',[BS.ign]:'wait',[BS.rev]:'rev',[BS.err]:'err'})[s]||'wait';
+// États d'une ligne du lot : les libellés que le serveur envoie (rowStatus dans batch.go).
+const BS=Object.freeze({wait:'attente',run:'en cours',pub:'publié',sim:'simulé',rev:'à revoir',rv:'revu',err:'erreur',present:'déjà présent',ign:'ignoré'});
+// Un onglet par état, dans cet ordre ; '' = pas encore examinée. Publié est épinglé à droite.
+const BTABS=[{k:'',lab:'Nouveau',ic:'st-new'},{k:BS.run,lab:'En cours',ic:'st-run',c:'run'},{k:BS.wait,lab:'En attente',ic:'st-wait',c:'wait'},
+  {k:BS.sim,lab:'Simulé',ic:'st-sim',c:'sim'},{k:BS.rev,lab:'À revoir',ic:'eye',c:'rev'},{k:BS.rv,lab:'Revu',ic:'st-rv',c:'rv'},{k:BS.err,lab:'Erreur',ic:'alert',c:'err'},
+  {k:BS.present,lab:'Déjà présent',ic:'st-dup',c:'run'},{k:BS.ign,lab:'Ignoré',ic:'st-skip',c:'wait'},{k:BS.pub,lab:'Publié',ic:'st-pub',c:'pub'}];
+const bTab=s=>BTABS.find(t=>t.k===(s||''));
+const bRank=s=>BTABS.findIndex(t=>t.k===(s||''));
+const bBadge=s=>bTab(s)?.c||'wait';
+const bPub=r=>r.status===BS.pub;
 function renderBatch(j){st.batchJob=j;const rows=j.rows||[];
   if(rows.length||j.running){$('batchSummary').hidden=false;
     const todo=rows.filter(r=>r.status!==BS.present),done=todo.filter(r=>r.status!==BS.wait&&r.status!==BS.run).length,cur=rows.find(r=>r.status===BS.run);
     const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
     $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
     $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…'+(j.note||''):(j.done?'Terminé.':''));
-    $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
-  $('batchStop').hidden=!j.running;$('batchStart').disabled=!!j.running;
+    $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.reviewed?` · ${j.reviewed} revue(s)`:'')+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
+  $('batchStop').hidden=!j.running;
   renderBatchTable()}
-// Dernière décision connue (historique), datée, tant que le lot ne l'a pas remplacée. Décochée, l'entrée reste « exclu » et le détail dit pourquoi.
-function lastSeen(l,on){if(!l)return {};const d=new Date(l.at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
-  return {status:on?l.status:BS.off,detail:`${on?'':l.status+' · '}${d}${l.detail?' · '+l.detail:''}`,url:l.url||'',built:l.built,tmdb:l.tmdb,edition:l.edition}}
+// Dernière décision connue (historique), datée, tant que le lot ne l'a pas remplacée.
+function lastSeen(l){if(!l)return {};const d=new Date(l.at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+  return {status:l.status,detail:`${d}${l.detail?' · '+l.detail:''}`,url:l.url||'',built:l.built,tmdb:l.tmdb,edition:l.edition}}
 // Déjà sur Draupnirr d'après l'historique : décochée par défaut (le lot la sauterait de toute façon).
 const bDone=l=>!!l&&(l.status===BS.pub||l.status===BS.present);
-function renderBatchTable(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,pk=st.batchPick,
+// Les lignes du tableau : les entrées du dossier listé, avec l'état du lot de cette session s'il les a vues,
+// sinon la dernière décision de l'historique. Une entrée décochée garde son état : elle reste dans son onglet.
+function batchRows(){const j=st.batchJob||{},jobRows=j.rows||[],running=!!j.running,pk=st.batchPick,
     // Un lot qui tourne sur un autre dossier garde son tableau ; la liste à cocher revient quand il s'arrête.
     p=pk&&pk.key===batchPickKey()&&!(running&&j.root!==pk.path)?pk:null;
+  if(!p)return {p,running,rows:jobRows};
   const byPath=new Map(jobRows.map(r=>[r.path,r]));
-  // Pendant un lot, l'état vient du serveur ; sinon une entrée décochée est « exclu », même si un lot précédent l'a vue.
-  const rows=p?p.entries.map(e=>{const on=p.on.has(e.path),r=byPath.get(e.path);
-      return {...(r&&(running||on)?r:{name:e.name,size:e.size,path:e.path,status:on?'':BS.off,...lastSeen(e.last,on)}),is_dir:e.is_dir,on,pick:true}}):jobRows;
-  $('batchPickAll').hidden=$('batchPickNone').hidden=!p||!p.entries.length||running;
-  if(p){const n=p.entries.length,k=p.on.size;
-    $('batchPickCount').textContent=n?`${k} / ${n} ${$('batchMusic').checked?'album(s)':'élément(s)'} inclus dans le lot`:'Rien à traiter dans ce dossier.'}
-  if(!rows.length){$('batchList').innerHTML=`<div class="empty">${ico('folder')}<span>${p?'Ce dossier est vide.':'Choisis un dossier : ses entrées s\'affichent ici, à cocher.'}</span></div>`;return}
-  const so=st.batchSort,sorted=so?[...rows].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:so.k==='status'?bRank(a.status)-bRank(b.status)||a.name.localeCompare(b.name):a.name.localeCompare(b.name))):rows;
-  const h=(...a)=>sortHead(so,...a);
-  $('batchList').innerHTML=`<div class="b h"><span></span>${h('name','Release')}${h('size','Taille','justify-content:flex-end')}${h('status','État')}<span class="eyebrow" style="line-height:34px">Détail</span></div>`+sorted.map(r=>`<div class="b ${r.pick&&!r.on?'off':''} ${r.pick&&!running?'pk':''}"><span>${r.pick?`<input type="checkbox" data-p="${esc(r.path)}" ${r.on?'checked':''} ${running?'disabled':''}>`:''}</span><span class="nm" title="${esc(r.path)}"><b>${esc(r.name)}</b><small>${esc([r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · '))}</small></span><span class="r">${human(r.size)}</span><span>${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'<span class="mut dash">—</span>'}</span><span class="mut" style="font-size:12px">${r.url?`<a href="${esc(r.url)}" target="_blank">${esc(r.detail)}</a>`:esc(r.detail||'')}</span></div>`).join('');
-  $('batchList').querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=()=>{c.checked?p.on.add(c.dataset.p):p.on.delete(c.dataset.p);renderBatchTable()});
-  // Toute la ligne coche ou décoche, sauf un clic sur la case elle-même ou sur un lien.
-  $('batchList').querySelectorAll('.b.pk').forEach(row=>row.onclick=e=>{if(e.target.closest('input,a'))return;const c=row.querySelector('input');c.checked=!c.checked;c.onchange()});
-  $('batchList').querySelectorAll('.h button').forEach(b=>b.onclick=()=>{st.batchSort=st.batchSort&&st.batchSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchSort.d}:{k:b.dataset.k,d:1};renderBatchTable()})}
-async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
-$('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked;
-  if(st.batchPick&&st.batchPick.key===batchPickKey()&&st.batchPick.entries.length&&!st.batchPick.on.size)return toast('Tout est décoché : rien à traiter.','warn');
-  if(!dry&&!confirm('Publier pour de vrai ce qui est sûr ? Les releases douteuses resteront « à revoir ».'))return;
-  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,max_size:Math.round((+$('batchMaxSize').value||0)*1024**3),only_video:$('batchVideo').checked,music:$('batchMusic').checked,music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,include:batchIncluded()});
-  toast(dry?'Simulation lancée':'Lot lancé','ok');batchPoll()});
-// Musique et « vidéos seulement » s'excluent ; les catégories film/série ne servent pas aux albums.
-function batchMode(){const m=$('batchMusic').checked;$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m}
-$('batchMusic').onchange=()=>{if($('batchMusic').checked)$('batchVideo').checked=false;batchMode();if(st.batchPick)batchPickLoad().catch(e=>toast(e.message,'err'))};
-$('batchVideo').onchange=()=>{if($('batchVideo').checked)$('batchMusic').checked=false;batchMode()};
+  return {p,running,rows:p.entries.map(e=>{const r=byPath.get(e.path),live=r&&(running||(r.status!==BS.wait&&r.status!==BS.run))?r:null;
+    return {name:e.name,size:e.size,path:e.path,is_dir:e.is_dir,choice:e.choice,episode:e.episode||'',status:'',...lastSeen(e.last),...(live?{...live,detail:live.detail||''}:{}),on:p.on.has(e.path),pick:true}})}}
+// Recherche sans casse ni accents, sur le nom du dossier et le nom calculé.
+const bNorm=t=>String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const bQ=()=>bNorm($('batchQ').value.trim());
+const bHl=t=>{const k=bQ(),i=k?bNorm(t).indexOf(k):-1;return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+k.length))+'</mark>'+esc(t.slice(i+k.length))};
+const bSub=r=>[r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boolean).join(' · ');
+function renderBatchTabs(rows,running){const n=new Map();rows.forEach(r=>n.set(r.status||'',(n.get(r.status||'')||0)+1));
+  // Pendant un lot, « En attente » reste ouvert même vide : il se vide au fil du lot, la fin ouvre le résultat.
+  if(st.batchTab!=='*'&&st.batchTab!==BS.pub&&!n.get(st.batchTab)&&!(running&&st.batchTab===BS.wait)){st.batchTab='*';st.batchOffSet=null}
+  // Picto et nombre ; l'onglet ouvert déplie aussi son nom.
+  const t=(k,lab,ic,c,cnt)=>{const on=st.batchTab===k;return `<button type="button" role="tab" data-t="${esc(k)}" class="${on?'on':''}" aria-selected="${on}" title="${esc(lab)} · ${cnt}" aria-label="${esc(lab)}, ${cnt}"><span class="pil ${c||''}">${ico(ic)}${on?`<span class="lab">${esc(lab)}</span>`:''}<span class="cnt">${cnt}</span></span></button>`};
+  const html='<div class="scroll">'+t('*','Tout','list','',rows.length)+BTABS.filter(x=>x.k!==BS.pub&&(n.get(x.k)||x.k===st.batchTab)).map(x=>t(x.k,x.lab,x.ic,x.c,n.get(x.k)||0)).join('')+
+    '</div><div class="pinned">'+t(BS.pub,'Publié','st-pub','pub',n.get(BS.pub)||0)+'</div>';
+  // Réécrits seulement s'ils changent : le suivi du lot (toutes les 2 s) ne relance ni l'animation ni le défilement.
+  if(html===st.batchTabsHtml)return;st.batchTabsHtml=html;const sc=$('batchTabs').querySelector('.scroll')?.scrollLeft||0;
+  $('batchTabs').innerHTML=html;$('batchTabs').querySelector('.scroll').scrollLeft=sc;
+  $('batchTabs').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.batchTab=b.dataset.t;st.batchOffSet=null;renderBatchTable()})}
+function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),dry=$('batchDry').checked;
+  $('batchTabs').hidden=$('batchTools').hidden=!rows.length;
+  if(!rows.length){$('batchList').classList.remove('all');$('batchList').innerHTML=`<div class="empty">${ico('folder')}<span>${p?'Ce dossier est vide.':'Choisis un dossier : ses entrées s\'affichent ici, à cocher.'}</span></div>`;
+    $('batchPickCount').textContent=p?'Rien à traiter dans ce dossier.':'Liste le dossier pour choisir ce qui entre dans le lot.';st.batchSel=[];
+    $('batchStartLab').textContent=dry?'Simuler':'Publier';$('batchStart').disabled=running||!!p;return}
+  renderBatchTabs(rows,running);
+  const tab=st.batchTab,ro=tab===BS.pub,all=tab==='*',k=bQ(),off=$('batchOffOnly').checked&&!ro;
+  const scope=rows.filter(r=>(all||(r.status||'')===tab)&&(!k||bNorm(r.name+' '+bSub(r)).includes(k)));
+  // « Décochées seulement » fige ses lignes : en recocher une ne la fait pas disparaître sous le doigt.
+  if(off&&!st.batchOffSet)st.batchOffSet=new Set(scope.filter(r=>r.pick&&!r.on&&!bPub(r)).map(r=>r.path));
+  const vis=off?scope.filter(r=>st.batchOffSet.has(r.path)):scope,sel=vis.filter(r=>r.pick&&!bPub(r)),on=sel.filter(r=>r.on).length;
+  st.batchSel=sel.filter(r=>r.on).map(r=>r.path);
+  $('batchOffOnly').closest('label').hidden=ro;
+  $('batchOffLab').textContent=`Décochées (${scope.filter(r=>r.pick&&!r.on&&!bPub(r)).length})`;
+  // Lancer ne traite que les lignes cochées affichées : l'onglet ouvert, la recherche.
+  $('batchPickCount').innerHTML=running?'Lot en cours : les cases reviennent quand il s\'arrête.':ro?`<b>${vis.length} release(s) publiée(s)</b>. Rien à recocher ici : chaque ligne mène à sa page sur Draupnirr.`
+    :p?`<b>${on} cochée(s) sur ${sel.length}</b>`:'Liste le dossier pour choisir ce qui entre dans le lot.';
+  $('batchStartLab').textContent=`${dry?'Simuler':'Publier'}${p?' '+on:''}`;$('batchStart').hidden=ro;$('batchStart').disabled=running||(!!p&&!on);
+  const so=st.batchSort,sorted=so?[...vis].sort((a,b)=>so.d*(so.k==='size'?a.size-b.size:so.k==='status'?bRank(a.status)-bRank(b.status)||a.name.localeCompare(b.name):a.name.localeCompare(b.name))):vis;
+  const h=(...a)=>sortHead(so,...a),master=p&&!running&&!ro&&sel.length;
+  // Revue en série : la loupe suit l'ordre affiché. Le groupe porte sur les lignes cochées.
+  st.batchVis=sorted.map(r=>r.path);const rq=sorted.filter(batchCanChoose);
+  $('batchRun').hidden=ro||!rq.length;$('batchRunLab').textContent=`Revoir à la suite (${rq.length})`;
+  // Groupe : les releases cochées parmi celles affichées.
+  const gq=rq.filter(r=>r.on);$('batchGroup').hidden=gq.length<2||st.batchKind==='music';$('batchGroupLab').textContent=`Une œuvre pour ces ${gq.length}`;
+  $('batchList').classList.toggle('all',all);
+  $('batchList').innerHTML=(vis.length?`<div class="b h">${master?'<input type="checkbox" id="batchMaster" aria-label="Cocher les lignes affichées">':'<span></span>'}${h('name','Release<small>dossier → nom Draupnirr</small>')}${h('size','Taille','justify-content:flex-end')}${all?`<span class="st">${h('status','État')}</span>`:''}<span class="eyebrow det">Détail</span><span></span></div>`:`<div class="empty"><span>${k?'Aucune release ne correspond à « '+esc($('batchQ').value.trim())+' » ici.':'Rien dans cet onglet.'}</span></div>`)+
+    sorted.map(r=>{const sub=bSub(r),lock=bPub(r);return `<div class="b ${r.pick&&!r.on&&!lock?'off':''} ${r.pick&&!running&&!lock?'pk':''}" data-p="${esc(r.path)}">${lock?`<span class="lock" title="Publié : ni republié ni resimulé">${ico('check')}</span>`:r.pick?`<input type="checkbox" ${r.on?'checked':''} ${running?'disabled':''} aria-label="Inclure ${esc(r.name)}">`:'<span></span>'}`+
+      `<span class="nm" title="${esc(r.path)}"><b>${ico(r.is_dir===false?'file':'folder')}<span class="t">${bHl(r.name)}</span></b>${sub?`<small>${ico('st-built')}<span class="t">${bHl(sub)}</span></small>`:''}</span><span class="r">${human(r.size)}</span>`+
+      (all?`<span class="st">${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'<span class="mut dash">—</span>'}</span>`:'')+
+      `<span class="det">${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.detail||r.url)}</a>`:esc(r.detail||'')||'<span class="mut">pas encore examinée</span>'}</span><button type="button" class="zoom" title="Détails${[BS.rev,BS.sim,BS.rv,''].includes(r.status||'')?' et choix de l\'œuvre':''}" aria-label="Détails de ${esc(r.name)}">${ico('search')}</button></div>`}).join('');
+  const m=$('batchMaster');if(m){m.checked=on===sel.length;m.indeterminate=on>0&&on<sel.length;m.onchange=()=>{sel.forEach(r=>m.checked?p.on.add(r.path):p.on.delete(r.path));renderBatchTable()}}
+  $('batchList').querySelectorAll('.b[data-p]').forEach(row=>{const c=row.querySelector('input[type=checkbox]'),path=row.dataset.p;
+    row.querySelector('.zoom').onclick=()=>bqOpen(st.batchVis,path);
+    if(!c||!row.classList.contains('pk'))return;
+    c.onchange=()=>{c.checked?p.on.add(path):p.on.delete(path);renderBatchTable()};
+    // Toute la ligne coche ou décoche, sauf un clic sur la case, un lien ou la loupe.
+    row.onclick=e=>{if(e.target.closest('input,a,button'))return;c.checked=!c.checked;c.onchange()}});
+  $('batchList').querySelectorAll('.h button[data-k]').forEach(b=>b.onclick=()=>{st.batchSort=st.batchSort&&st.batchSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchSort.d}:{k:b.dataset.k,d:1};renderBatchTable()})}
+const bqChoosable=()=>{const rows=batchRows().rows;return (st.batchVis||[]).filter(p=>{const r=rows.find(x=>x.path===p);return r&&batchCanChoose(r)})};
+$('batchRun').onclick=()=>{const ps=bqChoosable();if(ps.length)bqOpen(ps,ps[0])};
+$('batchGroup').onclick=()=>{const on=st.batchPick?.on;batchGroupOpen(bqChoosable().filter(p=>on?.has(p)))};
+$('batchQ').oninput=()=>{st.batchOffSet=null;renderBatchTable()};
+$('batchOffOnly').onchange=()=>{st.batchOffSet=null;renderBatchTable()};
+$('batchDry').onchange=()=>renderBatchTable();
+// Les lignes hors du lot en cours montrent la dernière décision de l'historique : la liste est relue
+// au départ et à la fin d'un lot, sinon un lot précédent (une simulation) disparaîtrait du tableau.
+async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GET','/ui/batch/status');
+  // Fin du lot : on ouvre son résultat.
+  if(st.batchWasRunning&&!j.running){st.batchTab=j.dry_run?BS.sim:BS.pub;st.batchOffSet=null;if(st.batchPick)await batchPickLoad().catch(()=>{})}st.batchWasRunning=!!j.running;
+  renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
+$('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked,include=batchIncluded();
+  if(include&&!include.length)return toast('Rien de coché ici : rien à traiter.','warn');
+  if(!dry&&!confirm(`Publier pour de vrai ${include?include.length+' release(s)':'tout le dossier'} ? Seul ce qui est sûr part ; le reste reste « à revoir ».`))return;
+  await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,max_size:Math.round((+$('batchMaxSize').value||0)*1024**3),only_video:st.batchKind==='video',music:st.batchKind==='music',music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,include});
+  toast(dry?'Simulation lancée':'Lot lancé','ok');st.batchTab=BS.wait;st.batchOffSet=null;await batchPoll();await batchPickLoad().catch(()=>{})});
+// Contenu : vidéos seulement, musique (un album = une release) ou tout. Les catégories film/série ne servent pas aux albums.
+function batchMode(){const m=st.batchKind==='music';$('batchSrcWrap').hidden=!m;$('batchCatFilm').parentElement.hidden=m;$('batchCatTV').parentElement.hidden=m;
+  $('batchKind').querySelectorAll('button').forEach(b=>{const on=b.dataset.k===st.batchKind;b.classList.toggle('on',on);b.setAttribute('aria-checked',on)})}
+$('batchKind').querySelectorAll('button').forEach(b=>b.onclick=()=>{const was=st.batchKind==='music';st.batchKind=b.dataset.k;batchMode();if(st.batchPick&&was!==(st.batchKind==='music'))batchPickLoad().catch(e=>toast(e.message,'err'))});
 // Cases à cocher : une par entrée du dossier (par album en musique), toutes cochées au départ, sauf celles déjà sur Draupnirr d'après l'historique.
-// Seules les cochées partent au serveur ; une liste d'un autre dossier ou d'un autre mode ne compte pas.
-st.batchPick=null;
-const batchPickKey=()=>$('batchPath').value.trim()+'|'+($('batchMusic').checked?1:0);
-// null = pas de liste pour ce dossier : tout y passe. Sinon les seules cochées, pour ne publier que ce qui a été montré.
-function batchIncluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return null;return p.entries.filter(e=>p.on.has(e.path)).map(e=>e.path)}
+const batchPickKey=()=>$('batchPath').value.trim()+'|'+(st.batchKind==='music'?1:0);
+// null = pas de liste pour ce dossier : tout y passe. Sinon les cochées affichées (onglet, recherche), pour ne publier que ce qui a été montré.
+function batchIncluded(){const p=st.batchPick;if(!p||p.key!==batchPickKey())return null;return st.batchSel}
 async function batchPickLoad(){const path=$('batchPath').value.trim();if(!path)return toast('Choisis un dossier','warn');const key=batchPickKey();
   $('batchPickCount').textContent='Lecture du dossier…';
-  const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+($('batchMusic').checked?'&music=1':''));if(key!==batchPickKey())return;
+  const r=await api('GET','/ui/batch/list?path='+encodeURIComponent(path)+(st.batchKind==='music'?'&music=1':''));if(key!==batchPickKey())return;
   const prev=st.batchPick&&st.batchPick.key===key?st.batchPick:null;const entries=r.entries||[];
-  st.batchPick={key,path,entries,on:new Set(entries.filter(e=>prev&&prev.entries.some(x=>x.path===e.path)?prev.on.has(e.path):!bDone(e.last)).map(e=>e.path))};renderBatchTable()}
+  st.batchPick={key,path,entries,on:new Set(entries.filter(e=>e.last?.status!==BS.pub&&(prev&&prev.entries.some(x=>x.path===e.path)?prev.on.has(e.path):!bDone(e.last)&&!e.choice?.ignored)).map(e=>e.path))};st.batchOffSet=null;renderBatchTable()}
 $('batchPickLoad').onclick=()=>run($('batchPickLoad'),()=>batchPickLoad().catch(e=>{$('batchPickCount').textContent=e.message;toast(e.message,'err')}));
 $('batchPath').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('batchPickLoad').click()}});
 $('batchPath').addEventListener('change',()=>{if(st.batchPick&&st.batchPick.key!==batchPickKey())$('batchPickLoad').click()});
-$('batchPickAll').onclick=()=>{st.batchPick.entries.forEach(e=>st.batchPick.on.add(e.path));renderBatchTable()};
-$('batchPickNone').onclick=()=>{st.batchPick.on.clear();renderBatchTable()};
+// Sélecteur de dossier : on navigue dans les dossiers de la source (sans toucher au dossier de l'onglet Upload).
+async function ddBrowse(p){const seq=st.ddSeq=(st.ddSeq||0)+1;$('ddList').innerHTML='<div class="empty"><span>Lecture du dossier…</span></div>';
+  try{const r=await api('GET','/ui/browse?peek=1&dirs=1&path='+encodeURIComponent(p));if(seq!==st.ddSeq)return;$('ddPath').value=r.path;$('ddPath').dataset.parent=r.parent||'';$('ddUp').disabled=!r.parent||r.parent===r.path;
+    const ds=(r.entries||[]).filter(e=>e.is_dir).sort((a,b)=>a.name.localeCompare(b.name)),nf=(r.entries||[]).length-ds.length;
+    $('ddCount').textContent=`${ds.length} dossier(s)${nf?`, ${nf} fichier(s)`:''}`;
+    $('ddList').innerHTML=ds.map(e=>`<div class="e dir" data-p="${esc(e.path)}">${ico('folder')}<span class="n" title="${esc(e.path)}">${esc(e.name)}</span><span class="sz">${e.size?human(e.size):''}</span>${ico('chevron-right')}</div>`).join('')||'<div class="empty"><span>Aucun sous-dossier.</span></div>';
+    $('ddList').querySelectorAll('.e').forEach(d=>d.onclick=()=>ddBrowse(d.dataset.p))}
+  catch(e){if(seq===st.ddSeq)$('ddList').innerHTML=msg('err',esc(e.message))}}
+$('batchBrowse').onclick=()=>{$('dirDlg').showModal();ddBrowse($('batchPath').value.trim())};
+$('ddUp').onclick=()=>ddBrowse($('ddPath').dataset.parent||'');
+$('ddPath').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();ddBrowse($('ddPath').value.trim())}});
+$('ddClose').onclick=$('ddCancel').onclick=()=>$('dirDlg').close();
+$('ddOk').onclick=()=>{$('batchPath').value=$('ddPath').value;$('dirDlg').close();$('batchPickLoad').click()};
 $('batchStop').onclick=()=>api('POST','/ui/batch/stop').then(()=>toast('Arrêt demandé après la release en cours','info'));
+
+// ---- Loupe : détail d'une ligne, œuvre ou édition choisie à la main ----
+// Un choix fait passer la ligne « revu » : le lot suivant prend cette œuvre au lieu de chercher.
+st.bd=null;
+const bdGuess=n=>n.replace(/\.[a-z0-9]{2,4}$/i,'').split(/[ ._(\[-](?:19|20)\d\d\b|[ ._]S\d\d|[ ._](?:2160|1080|720|576|480)p|\[/i)[0].replace(/[._]+/g,' ').trim();
+function batchOpen(path){const r=batchRows().rows.find(x=>x.path===path);if(!r)return;
+  const music=st.batchKind==='music',[artist,album]=r.name.includes(' - ')?r.name.split(' - ',2):['',r.name],ch=r.choice?.ignored?null:r.choice;
+  // Le choix déjà fait revient tel quel : œuvre, saison et facettes retouchées.
+  const pick=ch?(ch.musicbrainz_id?{title:ch.title,year:ch.year,sub:ch.artist||'',img:'',choice:ch}:{title:ch.title,year:ch.year,sub:ch.tmdb_type===TK.tv?'Série':'Film',img:ch.poster_url,choice:ch}):null;
+  st.bd={r,music,pick,kind:ch?.tmdb_type||(r.episode?TK.tv:TK.movie),q:ch&&!music?ch.title:bdGuess(r.name),artist:ch?.artist||artist.trim(),album:ch&&music?ch.title:bdGuess(album),results:[],
+    fiche:null,facets:{...(ch?.facets||{})},episode:ch?.episode||'',cat:ch?.category||''};
+  $('bdName').textContent=r.name;$('bdSub').textContent=`${human(r.size)} · ${r.path}`;
+  $('bdBadge').innerHTML=r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'';
+  batchDlg();bdShow();if(batchCanChoose(r)){batchSearch();if(!music&&!r.choice?.ignored)batchPrepare()}}
+// Focus sur le corps : Entrée valide au lieu d'activer le bouton Fermer.
+function bdShow(){if(!$('batchDlg').open)$('batchDlg').showModal();$('bdBody').scrollTop=0;$('bdBody').focus({preventScroll:true})}
+// ---- Revue en série : la loupe parcourt une file (les lignes affichées), sans se refermer ----
+// done : lignes réglées pendant la revue (validées, ignorées, ou rattachées à la même œuvre).
+st.bq=null;st.bdOpen={ft:false,mi:false};
+function bqOpen(paths,start){st.bq={paths:[...paths],pos:Math.max(0,paths.indexOf(start)),done:new Set()};batchOpen(st.bq.paths[st.bq.pos])}
+function bqMove(dir){const q=st.bq,p=q.pos+dir;if(p<0||p>=q.paths.length)return;q.pos=p;batchOpen(q.paths[p])}
+function bqNext(){const q=st.bq;let p=q.pos+1;while(p<q.paths.length&&q.done.has(q.paths[p]))p++;q.pos=p;
+  if(p<q.paths.length)return batchOpen(q.paths[p]);
+  const n=q.paths.length,k=q.paths.filter(x=>q.done.has(x)).length;st.bd=null;
+  $('bdName').textContent='File terminée';$('bdSub').textContent='';$('bdBadge').innerHTML='';$('bdQueue').hidden=true;
+  $('bdBody').innerHTML=`<div class="endq">${ico('check')}<b>${k} release(s) traitée(s) sur ${n}</b><span class="mut">Elles sont dans Revu ou Ignoré ; le prochain lot s'en servira.</span></div>`;
+  $('bdFoot').innerHTML='<span class="grow"></span><button type="button" class="primary" id="bdCancel">Fermer</button>';$('bdCancel').onclick=()=>$('batchDlg').close();bdShow()}
+function bqBar(){const q=st.bq,b=$('bdQueue');b.hidden=!q||q.paths.length<2||!!st.bd?.group;if(b.hidden)return;const n=q.paths.length,k=q.paths.filter(x=>q.done.has(x)).length;
+  b.innerHTML=`<button type="button" class="ghost" id="bdPrev" aria-label="Précédente" ${q.pos?'':'disabled'}>${ico('chevron-left')}</button><span class="pos">${q.pos+1} / ${n}</span><button type="button" class="ghost" id="bdNext" aria-label="Suivante" ${q.pos<n-1?'':'disabled'}>${ico('chevron-right')}</button><div class="bar"><div style="width:${Math.round(k/n*100)}%"></div></div>`;
+  $('bdPrev').onclick=()=>bqMove(-1);$('bdNext').onclick=()=>bqMove(1)}
+document.addEventListener('keydown',e=>{const q=st.bq,d=st.bd;if(!$('batchDlg').open||!q||!d||q.paths.length<2||e.ctrlKey||e.metaKey||e.altKey||e.target.matches('input:not([type=checkbox]),select,textarea'))return;
+  if(e.key==='ArrowRight'){e.preventDefault();bqMove(1)}else if(e.key==='ArrowLeft'){e.preventDefault();bqMove(-1)}
+  else if(e.key==='Enter'&&!e.target.closest('button,a')&&$('bdOk')&&!$('bdOk').disabled){e.preventDefault();$('bdOk').click()}
+  else if((e.key==='i'||e.key==='I')&&$('bdIgnore')){e.preventDefault();$('bdIgnore').click()}});
+// Même œuvre pour plusieurs releases : titre lu dans le nom ; chaque release garde sa saison (S02, S04E06).
+// La saison vient du serveur (episodeOf, liste du lot) : une seule lecture du nom, la même qu'à la publication.
+const bdTitle=n=>bNorm(bdGuess(n));
+// Autres lignes du même titre dans l'onglet, sans choix encore : proposées, cochées, à la validation.
+const bdSibs=d=>{if(d.music||d.group||!d.pick)return [];const t=bdTitle(d.r.name),tab=st.batchTab;
+  return batchRows().rows.filter(x=>x.path!==d.r.path&&!x.choice&&batchCanChoose(x)&&(tab==='*'||(x.status||'')===tab)&&bdTitle(x.name)===t)};
+const bdWork=(d,x)=>({...d.pick.choice,episode:bdKindOf(d)===TK.tv?x.episode:'',category:d.cat});
+// Titre cherché : le plus fréquent du groupe ; série dès qu'une release porte une saison.
+function batchGroupOpen(paths){const rows=batchRows().rows,g=paths.map(p=>rows.find(x=>x.path===p)).filter(Boolean);if(g.length<2)return;const r=g[0];st.bq=null;
+  const n={};g.forEach(x=>{const t=bdGuess(x.name);n[t]=(n[t]||0)+1});const t=Object.keys(n).sort((a,b)=>n[b]-n[a])[0];
+  // Précochées : les lignes de ce titre ; un autre titre coché par mégarde ne part pas sous la mauvaise œuvre.
+  st.bd={r,group:g,on:new Set(g.filter(x=>bdGuess(x.name)===t).map(x=>x.path)),music:false,pick:null,kind:g.some(x=>x.episode)?TK.tv:TK.movie,q:t,results:[],fiche:null,facets:{},episode:'',cat:''};
+  $('bdName').textContent=`${t} · ${g.length} releases`;$('bdSub').textContent=g.map(x=>x.episode||'—').join(' · ');$('bdBadge').innerHTML='';
+  batchDlg();bdShow();batchSearch()}
+const batchCanChoose=r=>!st.batchJob?.running&&[BS.rev,BS.sim,BS.rv,BS.err,BS.ign,''].includes(r.status||'');
+// Le type suit l'œuvre choisie (le sélecteur de recherche peut basculer sans rien choisir).
+const bdKindOf=d=>d.pick?.choice.tmdb_type||d.kind,bdCat=k=>$(k===TK.tv?'batchCatTV':'batchCatFilm').value,bdCatOf=d=>d.cat||bdCat(bdKindOf(d));
+// Sous-catégories proposées : la famille (groupe de l'onglet Upload) de la catégorie du lot pour ce type.
+const catFamily=v=>{const g=$('category').querySelector(`option[value="${CSS.escape(v)}"]`)?.parentElement;return g&&g.tagName==='OPTGROUP'?g.innerHTML:$('category').innerHTML};
+const bdCatOpts=d=>catFamily(bdCat(bdKindOf(d)));
+function batchDlg(){const d=st.bd,r=d.r,g=d.group,edit=!!g||batchCanChoose(r),q=st.bq,nx=!g&&q&&q.pos<q.paths.length-1;let h='';bqBar();
+  if(!g){
+  if(r.status===BS.rev)h+=msg('warn','Mis à revoir : '+esc(r.detail||''));
+  if(r.status===BS.rv)h+=`<div class="msg rv">${ico('st-rv')}<div>${esc(r.detail||'')}. Choix fait à la main : la ligne reste « revu » jusqu'à sa publication.</div></div>`;
+  if(r.status===BS.err)h+=msg('err',esc(r.detail||''));
+  if(r.status===BS.ign)h+=msg('info',r.choice?.ignored?'Ignorée à la main : les lots la sautent sans la hacher.':'Ignorée : '+esc(r.detail||''));
+  if(r.status===BS.pub)h+=msg('ok',`${esc(r.detail||'Publié')}${r.url?` · <a href="${esc(r.url)}" target="_blank" rel="noopener">voir la release sur Draupnirr</a>`:''}`);
+  if(r.status===BS.present)h+=msg('info','Déjà sur Draupnirr : '+esc(r.detail||''));
+  h+=`<dl class="kv"><dt>Chemin</dt><dd class="mono">${esc(r.path)}</dd><dt>Taille</dt><dd>${human(r.size)}</dd>${r.built&&(!edit||d.music)?`<dt>Nom Draupnirr</dt><dd class="mono">${esc(r.built)}</dd>`:''}${r.tmdb?`<dt>Œuvre</dt><dd>${esc(r.tmdb)}</dd>`:''}${r.edition?`<dt>Édition</dt><dd>${esc(r.edition)}</dd>`:''}</dl>`;
+  // Arborescence et MediaInfo, repliées (ouvertes d'une release à l'autre si on les a ouvertes) :
+  // chaque dossier se lit à l'ouverture, sans hacher ; le rapport est celui de la préparation.
+  if(r.is_dir!==false)h+=`<details class="ftree" id="bdTree" ${st.bdOpen.ft?'open':''}><summary>${ico('folder')}Fichiers et dossiers</summary><div class="ft" data-path="${esc(r.path)}"></div></details>`;
+  if(edit&&!d.music)h+=`<details class="ftree" id="bdMi" ${st.bdOpen.mi?'open':''}><summary>${ico('film')}MediaInfo<span class="sz"></span></summary><div class="mib"></div></details>`}
+  const sb=bdSibs(d);if(sb.length&&!d.also)d.also=new Set(sb.map(x=>x.path));
+  const k=g?d.on.size:1+sb.filter(x=>d.also?.has(x.path)).length;
+  if(edit){const p=d.pick;
+    h+=`<h2>${d.music?'Édition MusicBrainz':'Œuvre TMDB'}</h2>`;
+    if(p)h+=`<div class="cur">${p.img?`<img src="${esc(p.img)}" alt="" onerror="this.style.visibility='hidden'">`:''}<span class="grow"><b>${esc(p.title)}${p.year?` <span class="mut">(${p.year})</span>`:''}</b><br><span class="mut">${esc(p.sub)}${p.choice===d.r.choice?' · choix enregistré':' · nouveau choix'}</span></span></div>`;
+    h+=`<form class="srch" id="bdForm">${d.music?`<input id="bdArtist" placeholder="Artiste" value="${esc(d.artist)}"><input id="bdQ" placeholder="Album" value="${esc(d.album)}">`:`<select id="bdKind" aria-label="Type"><option value="movie">Film</option><option value="tv">Série</option></select><input id="bdQ" placeholder="Titre de l'œuvre sur TMDB" value="${esc(d.q)}">`}<button type="submit" id="bdSearch">${ico('search')}Chercher</button></form><div class="tmdb ${d.music?'mb':''}" id="bdRes"></div>`;
+    const also=(lab,xs,key,on)=>`<div class="also"><div class="ah">${ico('st-rv')}<span>${lab}</span></div>${xs.map(x=>`<label><input type="checkbox" data-${key}="${esc(x.path)}" ${on.has(x.path)?'checked':''}><span class="n" title="${esc(x.path)}">${esc(x.name)}</span><span class="ep">${esc(x.episode||'—')}</span></label>`).join('')}</div>`;
+    if(g)h+=also(`Une seule œuvre pour ces ${g.length} releases ; chacune garde sa saison.${d.on.size<g.length?' Les autres titres sont décochés.':''}`,g,'g',d.on)+`<div class="grid"><label>Catégorie<select id="bdCat">${bdCatOpts(d)}</select></label></div>`;
+    else if(sb.length)h+=also('Même titre dans l\'onglet : appliquer aussi à',sb,'s',d.also);
+    if(!d.music&&!g)h+=`<h2>Fiche</h2><div id="bdFiche" class="stack"></div>`}
+  $('bdBody').innerHTML=h;
+  // À gauche : écarter la release (onglet Ignoré, gardé d'un lot à l'autre), revenir sur ce choix, ou passer à la suivante.
+  const ign=!g&&r.choice?.ignored,okLab=g?`Valider les ${k}`:k>1?`Valider ces ${k}${nx?' et suivante':''}`:nx?'Valider et suivante':r.status===BS.rv||r.status===BS.sim?'Enregistrer':'Valider : passer en Revu';
+  $('bdFoot').innerHTML=(edit?(ign?`<button type="button" id="bdForget">Ne plus ignorer</button>`:`<button type="button" id="bdIgnore">${ico('st-skip')}Ignorer${g?` ces ${k}`:''}</button>`):'')+
+    (r.status===BS.rv&&edit&&!g?'<button type="button" id="bdForget">Oublier ce choix</button>':'')+(nx?'<button type="button" class="ghost" id="bdSkip">Passer</button>':'')+'<span class="grow"></span><button type="button" id="bdCancel">Fermer</button>'+
+    (edit?`<button type="button" class="primary" id="bdOk" ${d.pick&&k?'':'disabled'}>${ico('check')}${okLab}</button>`:'')+
+    (q&&q.paths.length>1&&!g?`<div class="keys"><span><kbd>←</kbd> <kbd>→</kbd> naviguer</span>${edit?'<span><kbd>Entrée</kbd> valider</span><span><kbd>I</kbd> ignorer</span>':''}<span><kbd>Échap</kbd> fermer</span></div>`:'');
+  $('bdCancel').onclick=()=>$('batchDlg').close();if($('bdSkip'))$('bdSkip').onclick=()=>bqMove(1);
+  const tr=$('bdTree'),mi=$('bdMi');
+  if(tr){tr.addEventListener('toggle',()=>{st.bdOpen.ft=tr.open;if(tr.open)ftLoad(tr.querySelector('.ft'))});if(tr.open)ftLoad(tr.querySelector('.ft'))}
+  if(mi){mi.addEventListener('toggle',()=>{st.bdOpen.mi=mi.open;miLoad(d)});miLoad(d)}
+  $('bdBody').querySelectorAll('[data-s],[data-g]').forEach(c=>c.onchange=()=>{const set=c.dataset.g?d.on:d.also,p=c.dataset.g||c.dataset.s;c.checked?set.add(p):set.delete(p);
+    const n=g?d.on.size:1+sb.filter(x=>d.also.has(x.path)).length;$('bdOk').innerHTML=ico('check')+(g?`Valider les ${n}`:n>1?`Valider ces ${n}${nx?' et suivante':''}`:nx?'Valider et suivante':okLab);$('bdOk').disabled=!d.pick||!n;
+    if(g&&$('bdIgnore'))$('bdIgnore').innerHTML=ico('st-skip')+`Ignorer ces ${n}`});
+  if(edit){if($('bdKind')){$('bdKind').value=d.kind;$('bdKind').onchange=()=>{d.kind=$('bdKind').value;batchSearch()}}
+    onSubmit($('bdForm'),()=>run($('bdSearch'),batchSearch));batchResults();batchFiche();
+    if(g){$('bdCat').value=bdCatOf(d);if($('bdCat').value!==bdCatOf(d)){d.cat='';$('bdCat').value=bdCatOf(d)}$('bdCat').onchange=()=>{d.cat=$('bdCat').value}}
+    const mem=()=>g.filter(x=>d.on.has(x.path));
+    $('bdOk').onclick=()=>run($('bdOk'),()=>batchChoose(g?mem().map(x=>({r:x,choice:bdWork(d,x)}))
+      :[{r,choice:d.music?d.pick.choice:{...d.pick.choice,episode:bdKindOf(d)===TK.tv?d.episode:'',facets:d.facets,category:d.cat}},...sb.filter(x=>d.also.has(x.path)).map(x=>({r:x,choice:bdWork(d,x)}))]));
+    if($('bdForget'))$('bdForget').onclick=()=>run($('bdForget'),()=>batchChoose([{r,choice:null}]));
+    if($('bdIgnore'))$('bdIgnore').onclick=()=>run($('bdIgnore'),()=>batchChoose((g?mem():[r]).map(x=>({r:x,choice:{ignored:true}}))))}}
+// Aperçu MediaInfo : pistes résumées en puces, puis le rapport complet (JSON de mediainfo, mis en colonnes).
+const MI_CH={1:'1.0',2:'2.0',3:'2.1',6:'5.1',7:'6.1',8:'7.1'};
+function miHtml(mi){const t=mi?.media?.track||[],ty=x=>x['@type'],v=t.find(x=>ty(x)==='Video'),au=t.filter(x=>ty(x)==='Audio'),tx=t.filter(x=>ty(x)==='Text'),w=+v?.Width||0;
+  const res=!v?'':w>=3800?'2160p':w>=1900?'1080p':w>=1260?'720p':v.Height?v.Height+'p':'';
+  const chips=[res,v?.Format,v?.BitDepth&&v.BitDepth+' bits',v?.HDR_Format&&'HDR',...au.map(a=>[a.Format,MI_CH[a.Channels]||(a.Channels?a.Channels+' can.':''),(a.Language||'').toUpperCase()].filter(Boolean).join(' · ')),tx.length?tx.length+' sous-titre'+(tx.length>1?'s':''):''].filter(Boolean);
+  const rep=t.map(x=>ty(x)+(t.filter(y=>ty(y)===ty(x)).length>1&&x['@typeorder']?' #'+x['@typeorder']:'')+'\n'+Object.entries(x).filter(([k,v])=>!k.startsWith('@')&&typeof v!=='object').map(([k,v])=>k.padEnd(28)+' : '+v).join('\n')).join('\n\n');
+  return (chips.length?`<div class="mih">${chips.map(c=>`<span class="chip probed">${esc(c)}</span>`).join('')}</div>`:'')+`<pre>${esc(rep||'Rapport vide.')}</pre>`}
+// Section MediaInfo repliée (loupe, Upload) : c porte job, miErr, fiche, et garde le rendu (c.mi).
+async function miShow(det,c){if(!det||!det.open||!c)return;const b=det.querySelector('.mib');
+  if(c.mi){b.innerHTML=c.mi.html;det.querySelector('summary .sz').textContent=c.mi.name;return}
+  if(!c.job){b.innerHTML=c.fiche?.err?msg('err','Préparation : '+esc(c.fiche.err)):'<div class="mut">Lu pendant la préparation…</div>';return}
+  if(c.miErr){c.mi={html:msg('warn','MediaInfo : '+esc(c.miErr)),name:''};return miShow(det,c)}
+  b.innerHTML='<div class="mut">Lecture…</div>';
+  try{let mi=await api('GET','/ui/job/'+c.job+'/mediainfo');if(Array.isArray(mi))mi=mi[0];c.mi={html:miHtml(mi),name:String(mi?.media?.['@ref']||'').split(/[\\/]/).pop()}}
+  catch(e){c.mi={html:msg('warn','MediaInfo : '+esc(e.message)),name:''}}
+  if(det.isConnected)miShow(det,c)}
+const miLoad=d=>{if(st.bd===d)miShow($('bdMi'),d)};
+// Fiche de la loupe : même préparation et même analyse que l'onglet Upload (torrent repris du cache
+// quand le lot l'a déjà haché), facettes préremplies et modifiables, nom recalculé à chaque retouche.
+async function ftLoad(box){if(box.dataset.done)return;box.dataset.done=1;box.innerHTML='<div class="mut">Lecture…</div>';
+  try{const r=await api('GET','/ui/browse?peek=1&path='+encodeURIComponent(box.dataset.path));const es=(r.entries||[]).sort((a,b)=>b.is_dir-a.is_dir||a.name.localeCompare(b.name));
+    box.innerHTML=es.map(e=>e.is_dir?`<details><summary>${ico('folder')}<span class="t">${esc(e.name)}</span><span class="sz">${e.size?human(e.size):''}</span></summary><div class="ft" data-path="${esc(e.path)}"></div></details>`
+      :`<div class="f">${ico('file')}<span class="t">${esc(e.name)}</span><span class="sz">${human(e.size)}</span></div>`).join('')||'<div class="mut">Dossier vide.</div>';
+    box.querySelectorAll(':scope>details').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)ftLoad(d.querySelector('.ft'))}))}
+  catch(e){delete box.dataset.done;box.innerHTML=msg('err',esc(e.message))}}
+async function batchPrepare(){const d=st.bd;d.fiche={step:'hachage',line:''};batchFiche();
+  try{// Mêmes gardes que le lot (batchOne) : rien n'est haché au-delà du plafond, ni dans un dossier sans fichier à la racine.
+    const cap=Math.round((+$('batchMaxSize').value||0)*1024**3);
+    if(cap&&d.r.size>cap)throw new Error(`au-delà du plafond (${human(d.r.size)} > ${human(cap)}) : pas haché`);
+    if(d.r.is_dir!==false){const l=await api('GET','/ui/browse?peek=1&dirs=1&path='+encodeURIComponent(d.r.path));if(st.bd!==d)return;
+      if(!(l.entries||[]).some(e=>!e.is_dir))throw new Error('aucun fichier à la racine : un dossier de releases ? Coche-les une par une (un disque complet se publie à la main)')}
+    const {job}=await api('POST','/ui/prepare',{path:d.r.path,category:bdCatOf(d)});
+    const j=await waitJob(job,j=>{if(st.bd!==d)return;d.fiche={step:j.step,line:jobLine(j)};batchFiche()},()=>st.bd===d);
+    if(st.bd!==d||!j)return;if(j.error)throw new Error(j.error);
+    d.job=job;d.miErr=j.mediainfo_error||'';d.episode||=j.episode||'';d.fiche={an:j.analysis};miLoad(d);
+    if(d.pick||Object.keys(d.facets).length||d.episode)return batchReanalyze();batchFiche()}
+  catch(e){if(st.bd===d){d.fiche={err:e.message};batchFiche();miLoad(d)}}}
+async function batchReanalyze(){const d=st.bd;if(!d?.job)return;const c=d.pick?.choice;$('bdFiche')?.classList.add('loading');
+  try{const a=await api('POST','/ui/analyze',{job:d.job,category:bdCatOf(d),facets:d.facets,episode:bdKindOf(d)===TK.tv?d.episode:'',
+      ...(c?{work_title:c.title,year:c.year||'',tmdb_id:c.tmdb_id,tmdb_type:c.tmdb_type}:{})});
+    if(st.bd===d){d.fiche={an:a};batchFiche()}}
+  catch(e){toast('Analyse : '+e.message,'err')}finally{$('bdFiche')?.classList.remove('loading')}}
+function batchFiche(){const d=st.bd,box=$('bdFiche'),f=d?.fiche;if(!box||!f)return;
+  if(f.err){box.innerHTML=msg('err','Préparation : '+esc(f.err));return}
+  if(!f.an){box.innerHTML=`<div class="mut">${esc(f.step==='hachage'?'Hachage':f.step==='mediainfo'?'MediaInfo':'Analyse')}… ${esc(f.line||'')}</div>`;return}
+  const a=f.an,n=a.nomenclature;
+  if(!n){box.innerHTML=msg('warn','Pas de nomenclature automatique pour cette catégorie.');return}
+  const keys=[...new Set(['source','edition','group','languages',...Object.keys(n.facets||{})])];
+  box.innerHTML=`<div class="built"><div class="eyebrow">Nom qui sera publié</div><div class="mono big">${esc(n.built_name||a.name)}</div><div class="chips">${facetChips(n)}</div>
+    ${n.missing?.length?`<div class="warn-text">Manque : ${esc(n.missing.join(', '))}</div>`:''}</div>
+    ${d.miErr?msg('warn','MediaInfo : '+esc(d.miErr)):''}
+    <div class="grid" id="bdFacets"><label>Catégorie<select id="bdCat">${bdCatOpts(d)}</select></label>${bdKindOf(d)===TK.tv?`<label>Épisode (séries)<input id="bdEp" placeholder="S01E03" value="${esc(d.episode)}"></label>`:''}${facetGrid(n,keys,d.facets)}</div>`;
+  box.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{d.facets[el.dataset.f]=el.value;batchReanalyze()});
+  $('bdCat').value=bdCatOf(d);if($('bdCat').value!==bdCatOf(d)){d.cat='';$('bdCat').value=bdCatOf(d)}$('bdCat').onchange=()=>{d.cat=$('bdCat').value;batchReanalyze()};
+  if($('bdEp'))$('bdEp').onchange=()=>{d.episode=$('bdEp').value.trim().toUpperCase();batchReanalyze()}}
+async function batchSearch(){const d=st.bd;if(!$('bdQ'))return;d.q=$('bdQ').value;if(d.music){d.artist=$('bdArtist').value;d.album=$('bdQ').value}
+  $('bdRes').innerHTML=`<div class="empty">Recherche sur ${d.music?'MusicBrainz':'TMDB'}…</div>`;
+  const r=d.music?await api('GET','/ui/musicbrainz?'+new URLSearchParams({artist:d.artist,album:d.album})).catch(e=>({results:[],error:e.message}))
+    :await api('GET','/ui/tmdb?q='+encodeURIComponent(d.q)+'&type='+d.kind).catch(e=>({results:[],error:e.message}));
+  d.results=(r.results||[]).slice(0,8);d.error=r.error;batchResults()}
+function batchResults(){const d=st.bd,box=$('bdRes');if(!box)return;
+  box.innerHTML=d.results.map((x,i)=>d.music?`<button type="button" class="c ${d.pick?.choice.musicbrainz_id===x.id?'sel':''}" data-i="${i}"><img src="${esc(x.cover_url||'')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><div><b>${esc(x.title)}${x.year?' <span class="mut">('+x.year+')</span>':''}</b><div class="mut">${esc([x.artist,x.label,x.country,x.media].filter(Boolean).join(' · '))}</div><span class="bdg x">${x.track_count} pistes</span></div></button>`
+      :`<button type="button" class="c ${d.pick?.choice.tmdb_id===x.id?'sel':''}" data-i="${i}"><img src="${esc(x.poster_url||'')}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><div><b>${esc(x.title)}${x.year?' <span class="mut">('+x.year+')</span>':''}</b><div class="mut">${esc(x.overview||'')}</div></div></button>`).join('')
+    ||`<div class="empty">${d.error?esc(d.error):'Aucun résultat : essaie un autre titre'+(d.music?'.':' ou l\'autre type.')}</div>`;
+  box.querySelectorAll('.c').forEach(b=>b.onclick=()=>{const x=d.results[+b.dataset.i],y=+x.year||0;
+    // Film ↔ série : la sous-catégorie choisie ne vaut plus, celle du lot reprend.
+    if(!d.music&&d.pick?.choice.tmdb_type&&d.pick.choice.tmdb_type!==d.kind)d.cat='';
+    d.pick=d.music?{title:x.title,year:y,sub:[x.artist,x.media].filter(Boolean).join(' · '),img:x.cover_url,choice:{musicbrainz_id:x.id,title:x.title,artist:x.artist||'',year:y}}
+      :{title:x.title,year:y,sub:d.kind===TK.tv?'Série':'Film',img:x.poster_url,choice:{tmdb_id:x.id,tmdb_type:d.kind,title:x.title,year:y,overview:x.overview||'',poster_url:x.poster_url||''}};
+    const keep={q:$('bdQ').value,a:$('bdArtist')?.value};batchDlg();$('bdQ').value=keep.q;if(keep.a!=null)$('bdArtist').value=keep.a;if(!d.music&&!d.group)d.fiche?batchReanalyze():batchPrepare()})}
+// items : [{r, choice}] — la release ouverte, plus les lignes du même titre ou du groupe.
+async function batchChoose(items){const d=st.bd,q=st.bq,c=items[0].choice,n=items.length,wasIgn=items[0].r.choice?.ignored;
+  for(const it of items)await api('POST','/ui/batch/choice',{path:it.r.path,name:it.r.name,size:it.r.size,choice:it.choice});
+  // Ignorée : décochée ; de retour : recochée.
+  if(st.batchPick)items.forEach(it=>{if(it.choice?.ignored)st.batchPick.on.delete(it.r.path);else if(it.r.choice?.ignored)st.batchPick.on.add(it.r.path)});
+  toast(c?.ignored?(n>1?`${n} releases ignorées : elles passent dans Ignoré`:'Release ignorée : elle passe dans Ignoré'):c?`« ${c.title} » retenue${n>1?` pour ${n} releases : elles passent`:' : la ligne passe'} dans Revu`:wasIgn?'La release n\'est plus ignorée':'Choix oublié : la ligne repasse à revoir','ok');
+  await batchPickLoad().catch(()=>{});batchPoll();
+  if(st.bd!==d)return;
+  // File : un choix fait passer à la suivante encore à régler ; un oubli rouvre la même.
+  if(q&&q.paths.length>1&&!d.group){if(c){items.forEach(it=>q.done.add(it.r.path));bqNext()}else batchOpen(q.paths[q.pos])}else $('batchDlg').close()}
+$('bdClose').onclick=()=>$('batchDlg').close();
+$('batchDlg').addEventListener('close',()=>{st.bd=null;st.bq=null});

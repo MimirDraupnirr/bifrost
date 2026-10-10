@@ -115,11 +115,16 @@ func agent(args []string) int {
 		}
 		return sign(args[1])
 	case "ls":
+		// --dirs : sans la taille des dossiers (sélecteur de dossier).
+		sizes := true
+		if len(args) > 1 && args[1] == "--dirs" {
+			sizes, args = false, args[1:]
+		}
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage : bifrost agent ls <dossier>")
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent ls [--dirs] <dossier>")
 			return 2
 		}
-		entries, err := listDir(args[1])
+		entries, err := listDirSizes(args[1], sizes)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
