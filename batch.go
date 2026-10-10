@@ -38,18 +38,19 @@ const (
 )
 
 type batchRow struct {
-	Path     string    `json:"path"`
-	Name     string    `json:"name"`
-	Size     int64     `json:"size"`
-	Status   rowStatus `json:"status"`
-	Detail   string    `json:"detail,omitempty"`
-	Category string    `json:"category,omitempty"`
-	Built    string    `json:"built,omitempty"`
-	TMDB     string    `json:"tmdb,omitempty"`
-	Edition  string    `json:"edition,omitempty"` // édition MusicBrainz d'un album
-	ID       string    `json:"id,omitempty"`
-	URL      string    `json:"url,omitempty"`
-	InfoHash string    `json:"infohash,omitempty"`
+	Path     string      `json:"path"`
+	Name     string      `json:"name"`
+	Size     int64       `json:"size"`
+	Status   rowStatus   `json:"status"`
+	Detail   string      `json:"detail,omitempty"`
+	Category string      `json:"category,omitempty"`
+	Built    string      `json:"built,omitempty"`
+	TMDB     string      `json:"tmdb,omitempty"`
+	Edition  string      `json:"edition,omitempty"` // édition MusicBrainz d'un album
+	ID       string      `json:"id,omitempty"`
+	URL      string      `json:"url,omitempty"`
+	InfoHash string      `json:"infohash,omitempty"`
+	choice   *workChoice // choix du membre (loupe) au moment où le lot examine la ligne
 }
 
 type batchJob struct {
@@ -66,6 +67,7 @@ type batchJob struct {
 	Rows       []*batchRow `json:"rows"`
 	Published  int         `json:"published"`
 	Review     int         `json:"review"`
+	Reviewed   int         `json:"reviewed"` // œuvre choisie à la main, encore à publier
 	Skipped    int         `json:"skipped"`
 	Note       string      `json:"note,omitempty"` // pause imposée par Draupnirr avant la première release
 	cancel     context.CancelFunc
@@ -396,7 +398,11 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			s.hist.record(e)
 			continue
 		}
-		if ch := s.hist.choiceFor(j.source, r.Path, r.Size); ch != nil && ch.Ignored {
+		// Le choix du membre (loupe), lu une fois pour la ligne : ignorée, œuvre forcée, ou rien.
+		s.mu.Lock()
+		r.choice = s.hist.choiceFor(j.source, r.Path, r.Size)
+		s.mu.Unlock()
+		if r.choice != nil && r.choice.Ignored {
 			s.mu.Lock()
 			r.Status, r.Detail = stIgnored, ignoredByHand
 			e := rowEvent(j, r)
@@ -419,13 +425,15 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		rctx := withRetry(ctx, s.pauseNotice(&r.Detail))
 		status, detail := run(rctx, c, src, j, r, env)
 		s.mu.Lock()
+		status, detail = reviewedStatus(status, detail, r.choice != nil)
 		switch status {
 		case stPublished, stSimulated:
 			j.Published++
 		case stReview:
 			j.Review++
+		case stReviewed:
+			j.Reviewed++
 		}
-		status, detail = reviewedStatus(status, detail, s.hist.choiceFor(j.source, r.Path, r.Size) != nil)
 		r.Status, r.Detail = status, detail
 		e := rowEvent(j, r)
 		s.mu.Unlock()
@@ -614,7 +622,7 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	// pour rien. Un disque complet (BDMV, VIDEO_TS) y passe aussi : à la main.
 	// Sauf si un membre a choisi l'œuvre dans la loupe : il a vu que c'est une
 	// release (une saison rangée dans un sous-dossier, par exemple).
-	ch := s.hist.choiceFor(j.source, r.Path, r.Size)
+	ch := r.choice
 	ext, err := mainExtension(ctx, src, r.Path)
 	if errors.Is(err, errNoTopFile) && ch == nil {
 		return stReview, "aucun fichier à la racine : un dossier de releases ? Coche-les une par une (un disque complet se publie à la main)"
@@ -829,22 +837,30 @@ func humanSize(n int64) string {
 	return strings.Replace(fmt.Sprintf("%.1f %s", f, units[i]), ".", ",", 1)
 }
 
-// reEpisode : « S06 », « S06E03 » ou « S06E01-E02 » dans un nom de release.
-var reEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])(S\d{1,2}(?:E\d{1,3}(?:-?E\d{1,3})?)?)(?:[ ._-]|$)`)
+// reEpisode : « S06 », « S06E03 », « S06E01-E02 » (aussi écrit S06E01E02 ou S06E01-02) dans un nom de release.
+var reEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])S(\d{1,2})(?:E(\d{1,3})(?:-?E?(\d{1,3}))?)?(?:[ ._-]|$)`)
 
-var reNum = regexp.MustCompile(`\d+`)
-
-// episodeOf : la saison ou l'épisode déclaré par le nom, en majuscules sur deux chiffres (« S03 ») ; "" sinon.
+// episodeOf : la saison ou l'épisode déclaré par le nom, dans la forme que Draupnirr
+// attend (« S03 », « S03E07 », « S03E01-E02 », deux chiffres au moins) ; "" sinon.
 func episodeOf(name string) string {
-	if m := reEpisode.FindStringSubmatch(name); m != nil {
-		return reNum.ReplaceAllStringFunc(strings.ToUpper(m[1]), func(d string) string {
-			if len(d) == 1 {
-				return "0" + d
-			}
-			return d
-		})
+	m := reEpisode.FindStringSubmatch(name)
+	if m == nil {
+		return ""
 	}
-	return ""
+	pad := func(d string) string {
+		if len(d) == 1 {
+			return "0" + d
+		}
+		return d
+	}
+	out := "S" + pad(m[1])
+	if m[2] != "" {
+		out += "E" + pad(m[2])
+	}
+	if m[3] != "" {
+		out += "-E" + pad(m[3])
+	}
+	return out
 }
 
 // ignoredByHand : le détail d'une release écartée depuis la loupe.

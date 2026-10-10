@@ -103,6 +103,12 @@ func TestBatchChoiceIsRememberedAndForgotten(t *testing.T) {
 	if rec := post(`{"path":"/d/Black Lagoon","size":10,"choice":{"tmdb_id":37854,"title":"Black Lagoon"}}`); rec.Code != 400 {
 		t.Fatalf("type TMDB manquant : %d", rec.Code)
 	}
+	if rec := post(`{"path":"/d/Black Lagoon","size":10}`); rec.Code != 200 || s.hist.lastFor("local", "/d/Black Lagoon", 10) != nil {
+		t.Fatalf("oubli sans choix : %d, historique touché", rec.Code)
+	}
+	if rec := post(`{"path":"/d/Vide","size":0,"choice":{"ignored":true}}`); rec.Code != 200 || s.hist.choiceFor("local", "/d/Vide", 0) == nil {
+		t.Fatalf("dossier vide (taille 0) ignoré depuis la loupe : %d", rec.Code)
+	}
 	if rec := post(`{"path":"/d/Black Lagoon","name":"Black Lagoon","size":10,"choice":{"tmdb_id":37854,"tmdb_type":"tv","title":"Black Lagoon","year":2006}}`); rec.Code != 200 {
 		t.Fatalf("choix refusé : %d %s", rec.Code, rec.Body)
 	}
@@ -151,6 +157,9 @@ func TestEpisodeOf(t *testing.T) {
 		"Alexandra.Ehle.S06.FRENCH.AD.1080p.WEB.H264-THESYNDiCATE": "S06",
 		"Show.s01e03.720p":        "S01E03",
 		"Show.S02E01-E02.MULTi":   "S02E01-E02",
+		"Show.S01E01E02.720p":     "S01E01-E02",
+		"Show.S1E1-2.FRENCH":      "S01E01-E02",
+		"Show.S01E100.1080p":      "S01E100",
 		"Show S3 FRENCH":          "S03",
 		"Film.2019.1080p.SSE":     "",
 		"Blade.Runner.2049.1080p": "",

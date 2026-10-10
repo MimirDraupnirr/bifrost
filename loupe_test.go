@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -52,6 +53,20 @@ func TestListDirSizesSkipsFolders(t *testing.T) {
 	}
 	if m := size(false); m["Rel"] != 0 || m["b.mkv"] != 300 {
 		t.Fatalf("dossiers sans taille, fichiers avec : %v", m)
+	}
+}
+
+func TestPruneJobsKeepsRunningAndRecent(t *testing.T) {
+	s := newServer(&Config{Source: "local"}, filepath.Join(t.TempDir(), "config.json"))
+	for i := 1; i <= maxJobs+10; i++ {
+		s.jobs[fmt.Sprint(i)] = &job{ID: fmt.Sprint(i), Done: i != 3} // la 3 tourne encore
+	}
+	s.pruneJobs()
+	if len(s.jobs) != maxJobs+1 {
+		t.Fatalf("%d préparations gardées, attendu %d terminées + 1 en cours", len(s.jobs), maxJobs)
+	}
+	if s.jobs["3"] == nil || s.jobs["1"] != nil || s.jobs[fmt.Sprint(maxJobs+10)] == nil {
+		t.Fatal("la préparation en cours ou la plus récente a été oubliée, ou la plus ancienne gardée")
 	}
 }
 

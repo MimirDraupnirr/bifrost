@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -425,6 +427,7 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 	s.nextID++
 	j := &job{ID: fmt.Sprint(s.nextID), Path: in.Path, Step: "hachage"}
 	s.jobs[j.ID] = j
+	s.pruneJobs()
 	clientCfg := s.cfg.Client
 	s.mu.Unlock()
 
@@ -532,6 +535,28 @@ func (s *server) jobStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+// maxJobs : préparations terminées gardées en mémoire (torrent, MediaInfo, analyse).
+// La loupe en lance une par ligne revue ; sans purge, une longue revue les accumulait toutes.
+// ponytail: compte fixe, pas d'âge ; un délai si quelqu'un remonte à une préparation ancienne.
+const maxJobs = 50
+
+// pruneJobs : oublie les préparations terminées les plus anciennes au-delà de maxJobs (sous s.mu).
+func (s *server) pruneJobs() {
+	var done []int
+	for id, j := range s.jobs {
+		if n, err := strconv.Atoi(id); err == nil && j.Done {
+			done = append(done, n)
+		}
+	}
+	if len(done) <= maxJobs {
+		return
+	}
+	sort.Ints(done)
+	for _, n := range done[:len(done)-maxJobs] {
+		delete(s.jobs, strconv.Itoa(n))
+	}
 }
 
 // jobMediaInfo : rapport MediaInfo (JSON brut) lu par la préparation, pour
@@ -1206,13 +1231,18 @@ func (s *server) batchChoiceHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bad := func(msg string) { writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg}) }
-	if in.Path == "" || in.Size <= 0 {
+	if in.Path == "" {
 		bad("release inconnue")
 		return
 	}
 	e := histEvent{Kind: evChoice, Source: sourceName(s.source()), Path: in.Path, Name: in.Name, Size: in.Size,
 		Status: stReview, Detail: "choix oublié : œuvre à choisir de nouveau"}
-	if prev := s.hist.choiceFor(e.Source, in.Path, in.Size); prev != nil && prev.Ignored {
+	prev := s.hist.choiceFor(e.Source, in.Path, in.Size)
+	if in.Choice == nil && prev == nil {
+		writeJSON(w, http.StatusOK, map[string]any{}) // rien à oublier : l'historique ne bouge pas
+		return
+	}
+	if prev != nil && prev.Ignored {
 		e.Detail = "n'est plus ignorée : à examiner au prochain lot"
 	}
 	if c := in.Choice; c != nil {
