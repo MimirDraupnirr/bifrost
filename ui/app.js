@@ -164,7 +164,7 @@ function poll(){return waitJob(st.job,j=>{const[d,t]=j.progress;$('prog').style.
     if(j.category)$('category').value=j.category;musicMode(!!j.analysis.music);go(2);
     if(st.music){musicStart(j.analysis);return}
     $('kind').value=j.analysis.guessed_type===TK.tv?TK.tv:TK.movie;showAnalysis(j.analysis);
-    $('q').value=j.analysis.clean_title||j.torrent.name;$('kind').value=j.analysis.guessed_type===TK.tv?TK.tv:TK.movie;$('year').value=j.analysis.year||'';$('work_title').value=j.analysis.clean_title||'';$('episode').value=j.episode||'';$('episode_title').value='';
+    $('q').value=j.analysis.clean_title||j.torrent.name;$('year').value=j.analysis.year||'';$('work_title').value=j.analysis.clean_title||'';$('episode').value=$('kind').value===TK.tv?(j.episode||''):'';$('episode_title').value='';
     $('tmdb').innerHTML='';search()})}
 
 // ---- étape 2 : œuvre et fiche ----
@@ -393,7 +393,7 @@ function renderBatch(j){st.batchJob=j;const rows=j.rows||[];
     const total=j.limit>0?Math.min(j.limit,todo.length):todo.length;const pct=total?Math.round(done/total*100):0;
     $('batchProg').style.width=pct+'%';$('batchPct').textContent=`${done} / ${total} · ${pct} %`;
     $('batchNow').textContent=cur?`En cours : ${cur.name} — ${cur.detail||''}`:(j.running?'Préparation…'+(j.note||''):(j.done?'Terminé.':''));
-    $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
+    $('batchCount').textContent=`${rows.length} élément(s) · ${j.skipped||0} déjà présent(s) · ${j.published||0} ${j.dry_run?'publiable(s)':'publié(s)'} · ${j.review||0} à revoir`+(j.reviewed?` · ${j.reviewed} revue(s)`:'')+(j.running?' · en cours…':j.done?' · terminé':'')+(j.error?' · '+j.error:'')}
   $('batchStop').hidden=!j.running;
   renderBatchTable()}
 // Dernière décision connue (historique), datée, tant que le lot ne l'a pas remplacée.
@@ -452,7 +452,7 @@ function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),d
   // Groupe : les releases cochées parmi celles affichées.
   const gq=rq.filter(r=>r.on);$('batchGroup').hidden=gq.length<2||st.batchKind==='music';$('batchGroupLab').textContent=`Une œuvre pour ces ${gq.length}`;
   $('batchList').classList.toggle('all',all);
-  $('batchList').innerHTML=(vis.length?`<div class="b h">${master?'<input type="checkbox" id="batchMaster" aria-label="Cocher les lignes affichées">':'<span></span>'}${h('name','Release<small>dossier → nom Draupnirr</small>')}${h('size','Taille','justify-content:flex-end')}${all?`<span class="st">${h('status','État')}</span>`:''}<span class="eyebrow det" style="line-height:38px;display:block">Détail</span><span></span></div>`:`<div class="empty"><span>${k?'Aucune release ne correspond à « '+esc($('batchQ').value.trim())+' » ici.':'Rien dans cet onglet.'}</span></div>`)+
+  $('batchList').innerHTML=(vis.length?`<div class="b h">${master?'<input type="checkbox" id="batchMaster" aria-label="Cocher les lignes affichées">':'<span></span>'}${h('name','Release<small>dossier → nom Draupnirr</small>')}${h('size','Taille','justify-content:flex-end')}${all?`<span class="st">${h('status','État')}</span>`:''}<span class="eyebrow det">Détail</span><span></span></div>`:`<div class="empty"><span>${k?'Aucune release ne correspond à « '+esc($('batchQ').value.trim())+' » ici.':'Rien dans cet onglet.'}</span></div>`)+
     sorted.map(r=>{const sub=bSub(r),lock=bPub(r);return `<div class="b ${r.pick&&!r.on&&!lock?'off':''} ${r.pick&&!running&&!lock?'pk':''}" data-p="${esc(r.path)}">${lock?`<span class="lock" title="Publié : ni republié ni resimulé">${ico('check')}</span>`:r.pick?`<input type="checkbox" ${r.on?'checked':''} ${running?'disabled':''} aria-label="Inclure ${esc(r.name)}">`:'<span></span>'}`+
       `<span class="nm" title="${esc(r.path)}"><b>${ico(r.is_dir===false?'file':'folder')}<span class="t">${bHl(r.name)}</span></b>${sub?`<small>${ico('st-built')}<span class="t">${bHl(sub)}</span></small>`:''}</span><span class="r">${human(r.size)}</span>`+
       (all?`<span class="st">${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'<span class="mut dash">—</span>'}</span>`:'')+
@@ -556,7 +556,8 @@ const bdWork=(d,x)=>({...d.pick.choice,episode:bdKindOf(d)===TK.tv?x.episode:'',
 // Titre cherché : le plus fréquent du groupe ; série dès qu'une release porte une saison.
 function batchGroupOpen(paths){const rows=batchRows().rows,g=paths.map(p=>rows.find(x=>x.path===p)).filter(Boolean);if(g.length<2)return;const r=g[0];st.bq=null;
   const n={};g.forEach(x=>{const t=bdGuess(x.name);n[t]=(n[t]||0)+1});const t=Object.keys(n).sort((a,b)=>n[b]-n[a])[0];
-  st.bd={r,group:g,on:new Set(g.map(x=>x.path)),music:false,pick:null,kind:g.some(x=>x.episode)?TK.tv:TK.movie,q:t,results:[],fiche:null,facets:{},episode:'',cat:''};
+  // Précochées : les lignes de ce titre ; un autre titre coché par mégarde ne part pas sous la mauvaise œuvre.
+  st.bd={r,group:g,on:new Set(g.filter(x=>bdGuess(x.name)===t).map(x=>x.path)),music:false,pick:null,kind:g.some(x=>x.episode)?TK.tv:TK.movie,q:t,results:[],fiche:null,facets:{},episode:'',cat:''};
   $('bdName').textContent=`${t} · ${g.length} releases`;$('bdSub').textContent=g.map(x=>x.episode||'—').join(' · ');$('bdBadge').innerHTML='';
   batchDlg();bdShow();batchSearch()}
 const batchCanChoose=r=>!st.batchJob?.running&&[BS.rev,BS.sim,BS.rv,BS.err,BS.ign,''].includes(r.status||'');
@@ -585,7 +586,7 @@ function batchDlg(){const d=st.bd,r=d.r,g=d.group,edit=!!g||batchCanChoose(r),q=
     if(p)h+=`<div class="cur">${p.img?`<img src="${esc(p.img)}" alt="" onerror="this.style.visibility='hidden'">`:''}<span class="grow"><b>${esc(p.title)}${p.year?` <span class="mut">(${p.year})</span>`:''}</b><br><span class="mut">${esc(p.sub)}${p.choice===d.r.choice?' · choix enregistré':' · nouveau choix'}</span></span></div>`;
     h+=`<form class="srch" id="bdForm">${d.music?`<input id="bdArtist" placeholder="Artiste" value="${esc(d.artist)}"><input id="bdQ" placeholder="Album" value="${esc(d.album)}">`:`<select id="bdKind" aria-label="Type"><option value="movie">Film</option><option value="tv">Série</option></select><input id="bdQ" placeholder="Titre de l'œuvre sur TMDB" value="${esc(d.q)}">`}<button type="submit" id="bdSearch">${ico('search')}Chercher</button></form><div class="tmdb ${d.music?'mb':''}" id="bdRes"></div>`;
     const also=(lab,xs,key,on)=>`<div class="also"><div class="ah">${ico('st-rv')}<span>${lab}</span></div>${xs.map(x=>`<label><input type="checkbox" data-${key}="${esc(x.path)}" ${on.has(x.path)?'checked':''}><span class="n" title="${esc(x.path)}">${esc(x.name)}</span><span class="ep">${esc(x.episode||'—')}</span></label>`).join('')}</div>`;
-    if(g)h+=also(`Une seule œuvre pour ces ${g.length} releases ; chacune garde sa saison.`,g,'g',d.on)+`<div class="grid"><label>Catégorie<select id="bdCat">${bdCatOpts(d)}</select></label></div>`;
+    if(g)h+=also(`Une seule œuvre pour ces ${g.length} releases ; chacune garde sa saison.${d.on.size<g.length?' Les autres titres sont décochés.':''}`,g,'g',d.on)+`<div class="grid"><label>Catégorie<select id="bdCat">${bdCatOpts(d)}</select></label></div>`;
     else if(sb.length)h+=also('Même titre dans l\'onglet : appliquer aussi à',sb,'s',d.also);
     if(!d.music&&!g)h+=`<h2>Fiche</h2><div id="bdFiche" class="stack"></div>`}
   $('bdBody').innerHTML=h;
@@ -636,7 +637,12 @@ async function ftLoad(box){if(box.dataset.done)return;box.dataset.done=1;box.inn
     box.querySelectorAll(':scope>details').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)ftLoad(d.querySelector('.ft'))}))}
   catch(e){delete box.dataset.done;box.innerHTML=msg('err',esc(e.message))}}
 async function batchPrepare(){const d=st.bd;d.fiche={step:'hachage',line:''};batchFiche();
-  try{const {job}=await api('POST','/ui/prepare',{path:d.r.path,category:bdCatOf(d)});
+  try{// Mêmes gardes que le lot (batchOne) : rien n'est haché au-delà du plafond, ni dans un dossier sans fichier à la racine.
+    const cap=Math.round((+$('batchMaxSize').value||0)*1024**3);
+    if(cap&&d.r.size>cap)throw new Error(`au-delà du plafond (${human(d.r.size)} > ${human(cap)}) : pas haché`);
+    if(d.r.is_dir!==false){const l=await api('GET','/ui/browse?peek=1&dirs=1&path='+encodeURIComponent(d.r.path));if(st.bd!==d)return;
+      if(!(l.entries||[]).some(e=>!e.is_dir))throw new Error('aucun fichier à la racine : un dossier de releases ? Coche-les une par une (un disque complet se publie à la main)')}
+    const {job}=await api('POST','/ui/prepare',{path:d.r.path,category:bdCatOf(d)});
     const j=await waitJob(job,j=>{if(st.bd!==d)return;d.fiche={step:j.step,line:jobLine(j)};batchFiche()},()=>st.bd===d);
     if(st.bd!==d||!j)return;if(j.error)throw new Error(j.error);
     d.job=job;d.miErr=j.mediainfo_error||'';d.episode||=j.episode||'';d.fiche={an:j.analysis};miLoad(d);
