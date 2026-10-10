@@ -372,10 +372,24 @@ func (r *remoteSource) List(ctx context.Context, p string) ([]DirEntry, error) {
 		return nil, err
 	}
 	defer c.Close()
+	return r.ls(ctx, c, p, "")
+}
+
+func (r *remoteSource) Dirs(ctx context.Context, p string) ([]DirEntry, error) {
+	c, err := r.client()
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	return r.ls(ctx, c, p, "--dirs ")
+}
+
+// ls : « agent ls » sur la seedbox ; flags vide ou « --dirs » (sans taille des dossiers).
+func (r *remoteSource) ls(ctx context.Context, c *ssh.Client, p, flags string) ([]DirEntry, error) {
 	if p == "" {
 		p = r.Home()
 	}
-	out, err := runSSH(ctx, c, agentPath+" agent ls "+shellQuote(p), nil, nil)
+	out, err := runSSH(ctx, c, agentPath+" agent ls "+flags+shellQuote(p), nil, nil)
 	if err != nil {
 		return nil, err
 	}

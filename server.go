@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -64,6 +65,7 @@ type job struct {
 	// Album : mediainfo de tout le dossier, analyse en catégorie Musique.
 	Music    bool   `json:"music"`
 	Category string `json:"category,omitempty"`
+	Episode  string `json:"episode,omitempty"` // saison ou épisode lu dans le nom (S06, S01E03)
 	raw      []byte
 }
 
@@ -95,6 +97,7 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("POST /ui/batch/stop", s.batchStopHandler)
 	s.mux.HandleFunc("GET /ui/batch/status", s.batchStatusHandler)
 	s.mux.HandleFunc("GET /ui/batch/list", s.batchListHandler)
+	s.mux.HandleFunc("POST /ui/batch/choice", s.batchChoiceHandler)
 	s.mux.HandleFunc("GET /ui/crossseed/scan", s.crossScan)
 	s.mux.HandleFunc("POST /ui/crossseed/add", s.crossAdd)
 	s.mux.HandleFunc("POST /ui/ssh/test", s.sshTest)
@@ -102,6 +105,7 @@ func newServer(cfg *Config, configPath string) *server {
 	s.mux.HandleFunc("GET /ui/browse", s.browse)
 	s.mux.HandleFunc("POST /ui/prepare", s.prepare)
 	s.mux.HandleFunc("GET /ui/job/{id}", s.jobStatus)
+	s.mux.HandleFunc("GET /ui/job/{id}/mediainfo", s.jobMediaInfo)
 	s.mux.HandleFunc("POST /ui/analyze", s.analyze)
 	s.mux.HandleFunc("GET /ui/categories", s.categories)
 	s.mux.HandleFunc("GET /ui/tmdb", s.tmdb)
@@ -234,12 +238,13 @@ func (s *server) connect(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		OutDir     string        `json:"out_dir"`
-		Source     string        `json:"source"`
-		SSH        *SSHConfig    `json:"ssh"`
-		Password   string        `json:"password"`
-		Client     *ClientConfig `json:"client"`
-		AutoUpdate *bool         `json:"auto_update"`
+		OutDir           string        `json:"out_dir"`
+		Source           string        `json:"source"`
+		SSH              *SSHConfig    `json:"ssh"`
+		Password         string        `json:"password"`
+		Client           *ClientConfig `json:"client"`
+		AutoUpdate       *bool         `json:"auto_update"`
+		BatchIntroHidden *bool         `json:"batch_intro_hidden"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, err)
@@ -255,6 +260,9 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.AutoUpdate != nil {
 		s.cfg.AutoUpdate = in.AutoUpdate
+	}
+	if in.BatchIntroHidden != nil {
+		s.cfg.BatchIntroHidden = *in.BatchIntroHidden
 	}
 	err := saveConfig(s.configPath, s.cfg)
 	s.mu.Unlock()
@@ -360,7 +368,11 @@ func (s *server) browse(w http.ResponseWriter, r *http.Request) {
 	if path == "" {
 		path = src.Home()
 	}
-	entries, err := src.List(r.Context(), path)
+	list := src.List
+	if r.URL.Query().Get("dirs") != "" {
+		list = src.Dirs // sélecteur de dossier : pas de taille, réponse immédiate
+	}
+	entries, err := list(r.Context(), path)
 	if err != nil {
 		fail(w, err)
 		return
@@ -369,10 +381,13 @@ func (s *server) browse(w http.ResponseWriter, r *http.Request) {
 	if _, remote := src.(*remoteSource); remote {
 		parent = pathDir(path)
 	}
+	// peek : simple coup d'œil (arborescence de la loupe), le dossier de l'onglet Upload ne bouge pas.
 	s.mu.Lock()
-	s.cfg.LastDir = path
+	if r.URL.Query().Get("peek") == "" {
+		s.cfg.LastDir = path
+		_ = saveConfig(s.configPath, s.cfg)
+	}
 	source := s.cfg.Source
-	_ = saveConfig(s.configPath, s.cfg)
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"path": path, "parent": parent, "entries": entries, "source": source})
 }
@@ -451,6 +466,10 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 		j.raw = raw
 		j.Torrent, _ = parseTorrent(raw)
 		j.MainFile = src.MainFile(in.Path, j.Torrent)
+		if j.Torrent != nil {
+			j.Episode = episodeOf(j.Torrent.Name)
+		}
+		ep := j.Episode
 		// Le plus gros fichier est une piste : c'est un album. MediaInfo lit
 		// alors tout le dossier (un objet par piste) et l'analyse se fait en
 		// Musique — sauf si le membre a déjà choisi une catégorie Musique.
@@ -475,6 +494,9 @@ func (s *server) prepare(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 
 		fields := map[string][]string{"category": {category}, "mediainfo": {mi}}
+		if ep != "" {
+			fields["episode"] = []string{ep}
+		}
 		out, aerr := c.Analyze(ctx, raw, fields)
 		// Catégorie choisie par Bifröst : on suit celle que Draupnirr propose
 		// d'après les pistes (FLAC, Album, OST).
@@ -510,6 +532,29 @@ func (s *server) jobStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+// jobMediaInfo : rapport MediaInfo (JSON brut) lu par la préparation, pour
+// la section MediaInfo de l'Uploader et de la loupe. Gardé hors de jobStatus,
+// interrogé toutes les 500 ms.
+func (s *server) jobMediaInfo(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	j, ok := s.jobs[r.PathValue("id")]
+	var mi string
+	if ok {
+		mi = j.MediaInfo
+	}
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "préparation inconnue"})
+		return
+	}
+	if mi == "" {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "rapport MediaInfo absent"})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, mi)
 }
 
 // formFields : la page envoie un objet plat {category, facets:{source:…}, …}
@@ -1135,13 +1180,73 @@ func (s *server) batchListHandler(w http.ResponseWriter, r *http.Request) {
 	// La dernière décision connue par entrée : la page l'affiche et décoche ce qui est déjà publié.
 	type listed struct {
 		DirEntry
-		Last *histEvent `json:"last,omitempty"`
+		Last    *histEvent  `json:"last,omitempty"`
+		Choice  *workChoice `json:"choice,omitempty"`  // pour rouvrir la loupe sur le choix fait
+		Episode string      `json:"episode,omitempty"` // saison lue dans le nom (même œuvre pour plusieurs lignes)
 	}
 	out := make([]listed, len(entries))
 	for i, e := range entries {
-		out[i] = listed{e, s.hist.lastFor(sourceName(src), e.Path, e.Size)}
+		out[i] = listed{e, s.hist.lastFor(sourceName(src), e.Path, e.Size), s.hist.choiceFor(sourceName(src), e.Path, e.Size), episodeOf(e.Name)}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": root, "entries": out})
+}
+
+// batchChoiceHandler : l'œuvre (TMDB) ou l'édition (MusicBrainz) qu'un membre
+// choisit pour une ligne du lot, depuis la loupe. Gardée dans l'historique,
+// elle sert aux lots suivants ; la ligne passe « revu ». Forget l'oublie.
+func (s *server) batchChoiceHandler(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Path   string      `json:"path"`
+		Name   string      `json:"name"`
+		Size   int64       `json:"size"`
+		Choice *workChoice `json:"choice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		fail(w, err)
+		return
+	}
+	bad := func(msg string) { writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg}) }
+	if in.Path == "" || in.Size <= 0 {
+		bad("release inconnue")
+		return
+	}
+	e := histEvent{Kind: evChoice, Source: sourceName(s.source()), Path: in.Path, Name: in.Name, Size: in.Size,
+		Status: stReview, Detail: "choix oublié : œuvre à choisir de nouveau"}
+	if prev := s.hist.choiceFor(e.Source, in.Path, in.Size); prev != nil && prev.Ignored {
+		e.Detail = "n'est plus ignorée : à examiner au prochain lot"
+	}
+	if c := in.Choice; c != nil {
+		switch {
+		case c.Ignored:
+			c = &workChoice{Ignored: true}
+			e.Status, e.Detail, e.Choice = stIgnored, ignoredByHand, c
+		case c.TMDBID > 0 && c.TMDBType.valid() && c.Title != "":
+			e.TMDB = fmt.Sprintf("%s (%d)", c.Title, c.Year)
+			e.Detail = "œuvre choisie : " + e.TMDB
+		case c.MusicBrainzID != "" && c.Title != "":
+			e.Edition = strings.TrimPrefix(c.Artist+" — "+c.Title, " — ")
+			e.Detail = "édition choisie : " + e.Edition
+		default:
+			bad("œuvre TMDB (id, type movie ou tv, titre) ou édition MusicBrainz (id, titre) attendue")
+			return
+		}
+		if !c.Ignored {
+			e.Status, e.Choice = stReviewed, c
+		}
+	}
+	s.hist.record(e)
+	// Le tableau d'un lot terminé montre la ligne telle qu'elle est maintenant.
+	s.mu.Lock()
+	if j := s.batch; j != nil && !j.Running && j.source == e.Source {
+		for _, row := range j.Rows {
+			if row.Path == in.Path && row.Size == in.Size && row.Status != stPublished {
+				row.Status, row.Detail, row.TMDB, row.Edition = e.Status, e.Detail, e.TMDB, e.Edition
+			}
+		}
+	}
+	s.mu.Unlock()
+	e.Choice = nil
+	writeJSON(w, http.StatusOK, e)
 }
 
 func (s *server) batchStopHandler(w http.ResponseWriter, r *http.Request) {

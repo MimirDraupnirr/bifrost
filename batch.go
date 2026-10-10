@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -31,6 +32,9 @@ const (
 	stReview    rowStatus = "à revoir"
 	stError     rowStatus = "erreur"
 	stIgnored   rowStatus = "ignoré"
+	// Œuvre choisie par un membre : la ligne reste « revu » jusqu'à sa
+	// publication, le détail dit ce que le dernier lot en a conclu.
+	stReviewed rowStatus = "revu"
 )
 
 type batchRow struct {
@@ -392,6 +396,14 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			s.hist.record(e)
 			continue
 		}
+		if ch := s.hist.choiceFor(j.source, r.Path, r.Size); ch != nil && ch.Ignored {
+			s.mu.Lock()
+			r.Status, r.Detail = stIgnored, ignoredByHand
+			e := rowEvent(j, r)
+			s.mu.Unlock()
+			s.hist.record(e)
+			continue
+		}
 		if j.Limit > 0 && examined >= j.Limit {
 			break
 		}
@@ -407,13 +419,14 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		rctx := withRetry(ctx, s.pauseNotice(&r.Detail))
 		status, detail := run(rctx, c, src, j, r, env)
 		s.mu.Lock()
-		r.Status, r.Detail = status, detail
 		switch status {
 		case stPublished, stSimulated:
 			j.Published++
 		case stReview:
 			j.Review++
 		}
+		status, detail = reviewedStatus(status, detail, s.hist.choiceFor(j.source, r.Path, r.Size) != nil)
+		r.Status, r.Detail = status, detail
 		e := rowEvent(j, r)
 		s.mu.Unlock()
 		// Un arrêt en cours de route n'est pas une décision : il ne doit pas
@@ -429,6 +442,21 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 		}
 	}
 	finish(nil)
+}
+
+// reviewedStatus : une release dont l'œuvre a été choisie à la main reste
+// « revu » tant qu'elle n'est pas publiée ; le détail garde la conclusion du lot.
+func reviewedStatus(status rowStatus, detail string, chosen bool) (rowStatus, string) {
+	if !chosen {
+		return status, detail
+	}
+	switch status {
+	case stSimulated:
+		return stReviewed, "simulé, " + detail
+	case stReview:
+		return stReviewed, "encore à revoir : " + detail
+	}
+	return status, detail
 }
 
 func batchID(j *batchJob) string { return j.Started.Format(time.RFC3339) }
@@ -584,8 +612,11 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	// Aucun fichier au premier niveau : un dossier de releases (cross-seed,
 	// collection), pas une release — le hacher d'un bloc prendrait des heures
 	// pour rien. Un disque complet (BDMV, VIDEO_TS) y passe aussi : à la main.
+	// Sauf si un membre a choisi l'œuvre dans la loupe : il a vu que c'est une
+	// release (une saison rangée dans un sous-dossier, par exemple).
+	ch := s.hist.choiceFor(j.source, r.Path, r.Size)
 	ext, err := mainExtension(ctx, src, r.Path)
-	if errors.Is(err, errNoTopFile) {
+	if errors.Is(err, errNoTopFile) && ch == nil {
 		return stReview, "aucun fichier à la racine : un dossier de releases ? Coche-les une par une (un disque complet se publie à la main)"
 	}
 	if j.OnlyVideo && err == nil && !videoExt[ext] {
@@ -604,23 +635,38 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	if err := analyzeInto(ctx, c, raw, map[string][]string{"category": {j.catFilm}, "mediainfo": {mi}}, &a); err != nil {
 		return stError, err.Error()
 	}
-	category, kind := j.catFilm, "movie"
-	if a.GuessedType == "tv" {
-		category, kind = j.catTV, "tv"
+	kind := kindMovie
+	if tmdbKind(a.GuessedType) == kindTV {
+		kind = kindTV
 	}
 
-	// Œuvre TMDB, seulement si sûre.
-	var results []tmdbResult
-	if rawT, err := c.TMDB(ctx, a.CleanTitle, kind); err == nil {
-		var resp struct {
-			Results []tmdbResult `json:"results"`
+	// Œuvre TMDB : celle qu'un membre a choisie, sinon une trouvée seulement si sûre.
+	var pick *tmdbResult
+	pickReason := ""
+	if ch != nil && ch.TMDBID > 0 {
+		kind = ch.TMDBType
+		pick = &tmdbResult{ID: ch.TMDBID, Title: ch.Title, Year: float64(ch.Year), Overview: ch.Overview, PosterURL: ch.PosterURL}
+	} else {
+		var results []tmdbResult
+		if rawT, err := c.TMDB(ctx, a.CleanTitle, string(kind)); err == nil {
+			var resp struct {
+				Results []tmdbResult `json:"results"`
+			}
+			_ = json.Unmarshal(rawT, &resp)
+			results = resp.Results
 		}
-		_ = json.Unmarshal(rawT, &resp)
-		results = resp.Results
+		pick, pickReason = pickWork(&a, results)
 	}
-	pick, pickReason := pickWork(&a, results)
+	category := j.catFilm
+	if kind == kindTV {
+		category = j.catTV
+	}
+	if ch != nil && ch.Category != "" {
+		category = ch.Category
+	}
 
-	// Seconde analyse, avec ce que le nom déclare (source, team, édition).
+	// Seconde analyse, avec ce que le nom déclare (source, team, édition) et
+	// ce qu'un membre a corrigé dans la loupe.
 	facets := map[string]string{}
 	if a.Nomenclature != nil {
 		for _, k := range []string{"source", "edition", "group"} {
@@ -629,14 +675,29 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 			}
 		}
 	}
+	episode := episodeOf(r.Name)
+	if ch != nil {
+		for k, v := range ch.Facets {
+			if v != "" {
+				facets[k] = v
+			}
+		}
+		if ch.Episode != "" {
+			episode = ch.Episode
+		}
+	}
 	fields := map[string][]string{"category": {category}, "mediainfo": {mi}, "year": {fmt.Sprint(yearOf(a.Year))}}
 	for k, v := range facets {
 		fields["facets["+k+"]"] = []string{v}
 	}
+	// La saison (ou l'épisode) du nom : sans elle, le nom canonique d'une série la perd.
+	if kind == kindTV {
+		fields["episode"] = []string{episode}
+	}
 	if pick != nil {
 		fields["work_title"] = []string{pick.Title}
 		fields["tmdb_id"] = []string{fmt.Sprint(pick.ID)}
-		fields["tmdb_type"] = []string{kind}
+		fields["tmdb_type"] = []string{string(kind)}
 		if y := yearOf(pick.Year); y > 0 {
 			fields["year"] = []string{fmt.Sprint(y)}
 		}
@@ -657,6 +718,9 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	s.mu.Unlock()
 
 	ok, reason := decide(&a, pick, pickReason)
+	if ok && kind == kindTV && episode == "" {
+		ok, reason = false, "saison absente du nom (S01, S01E03) : Draupnirr la refuserait"
+	}
 	if !ok {
 		return stReview, reason
 	}
@@ -664,11 +728,15 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 		return stSimulated, "publiable : " + a.Nomenclature.BuiltName
 	}
 
-	// Publication, puis seed.
-	desc, format := batchDescription(&a, pick, env.templates, category, env.uploader)
+	// Publication, puis seed. La présentation suit l'œuvre retenue (une série
+	// choisie à la main peut avoir été devinée comme un film) et sa saison.
+	desc, format := batchDescription(&a, pick, kind, episode, env.templates, category, env.uploader)
 	meta := map[string][]string{"category": {category}, "description": {desc}, "description_format": {format}, "mediainfo": {mi},
-		"meta[work_title]": {pick.Title}, "meta[year]": {fmt.Sprint(yearOf(pick.Year))}, "meta[tmdb_id]": {fmt.Sprint(pick.ID)}, "meta[tmdb_type]": {kind},
+		"meta[work_title]": {pick.Title}, "meta[year]": {fmt.Sprint(yearOf(pick.Year))}, "meta[tmdb_id]": {fmt.Sprint(pick.ID)}, "meta[tmdb_type]": {string(kind)},
 		"meta[poster_url]": {pick.PosterURL}, "meta[synopsis]": {pick.Overview}}
+	if kind == kindTV {
+		meta["meta[episode]"] = []string{episode}
+	}
 	for k, v := range facets {
 		meta["meta[facets]["+k+"]"] = []string{v}
 	}
@@ -711,7 +779,7 @@ func (s *server) publishAndSeed(ctx context.Context, c *Client, r *batchRow, raw
 
 // batchDescription : le modèle du membre pour la famille, sinon celui du
 // site, sinon une présentation sobre. Les variables suivent docs/22 §3.
-func batchDescription(a *analysis, pick *tmdbResult, templates []presTemplate, category, uploader string) (string, string) {
+func batchDescription(a *analysis, pick *tmdbResult, kind tmdbKind, episode string, templates []presTemplate, category, uploader string) (string, string) {
 	n := a.Nomenclature
 	v := func(k string) string {
 		if n == nil {
@@ -726,13 +794,14 @@ func batchDescription(a *analysis, pick *tmdbResult, templates []presTemplate, c
 		return fmt.Sprint(n.Media[k])
 	}
 	data := map[string]string{
-		"titre": pick.Title, "annee": fmt.Sprint(yearOf(pick.Year)), "type": map[bool]string{true: "Série", false: "Film"}[a.GuessedType == "tv"],
-		"synopsis": pick.Overview, "affiche": pick.PosterURL, "tmdb_url": fmt.Sprintf("https://www.themoviedb.org/%s/%d", map[bool]string{true: "tv", false: "movie"}[a.GuessedType == "tv"], pick.ID),
+		"titre": pick.Title, "annee": fmt.Sprint(yearOf(pick.Year)), "type": map[bool]string{true: "Série", false: "Film"}[kind == kindTV],
+		"synopsis": pick.Overview, "affiche": pick.PosterURL, "tmdb_url": fmt.Sprintf("https://www.themoviedb.org/%s/%d", kind, pick.ID),
 		"nom_release": a.Name, "taille": a.SizeHuman, "nb_fichiers": fmt.Sprint(a.FileCount), "tags": strings.Join(a.Tags, ", "),
 		"source": v("source"), "edition": v("edition"), "team": v("group"), "langues": v("languages"), "resolution": v("resolution"),
 		"codec_video": v("video_codec"), "profondeur": v("bit_depth"), "hdr": v("hdr"), "codec_audio": v("audio_codec"), "canaux": v("channels"),
 		"duree": media("duration"), "debit": media("bitrate"), "sous_titres": media("subtitles"), "uploadeur": uploader, "date": today(),
 	}
+	data["episode"] = episode
 	if n != nil {
 		data["nom_release"] = n.BuiltName
 		data["nfo"] = n.NFO
@@ -759,6 +828,27 @@ func humanSize(n int64) string {
 	}
 	return strings.Replace(fmt.Sprintf("%.1f %s", f, units[i]), ".", ",", 1)
 }
+
+// reEpisode : « S06 », « S06E03 » ou « S06E01-E02 » dans un nom de release.
+var reEpisode = regexp.MustCompile(`(?i)(?:^|[ ._-])(S\d{1,2}(?:E\d{1,3}(?:-?E\d{1,3})?)?)(?:[ ._-]|$)`)
+
+var reNum = regexp.MustCompile(`\d+`)
+
+// episodeOf : la saison ou l'épisode déclaré par le nom, en majuscules sur deux chiffres (« S03 ») ; "" sinon.
+func episodeOf(name string) string {
+	if m := reEpisode.FindStringSubmatch(name); m != nil {
+		return reNum.ReplaceAllStringFunc(strings.ToUpper(m[1]), func(d string) string {
+			if len(d) == 1 {
+				return "0" + d
+			}
+			return d
+		})
+	}
+	return ""
+}
+
+// ignoredByHand : le détail d'une release écartée depuis la loupe.
+const ignoredByHand = "ignorée à la main"
 
 var errNoTopFile = errors.New("dossier sans fichier à la racine")
 

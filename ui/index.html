@@ -18,6 +18,7 @@
     <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5"/></symbol>
     <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7M19 12H5"/></symbol>
     <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
     <symbol id="i-hard-drive" viewBox="0 0 24 24"><path d="M22 12H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01"/></symbol>
     <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/></symbol>
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></symbol>
@@ -56,6 +57,15 @@
     <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></symbol>
+    <symbol id="i-st-new" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 17v4M17 19h4"/></symbol>
+    <symbol id="i-st-run" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></symbol>
+    <symbol id="i-st-wait" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-st-sim" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6L4.5 18.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-2.5L14 9V3M7 15h10"/></symbol>
+    <symbol id="i-st-rv" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></symbol>
+    <symbol id="i-st-dup" viewBox="0 0 24 24"><rect width="13" height="13" x="9" y="9" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-st-skip" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+    <symbol id="i-st-pub" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></symbol>
+    <symbol id="i-st-built" viewBox="0 0 24 24"><path d="M5 4v7a3 3 0 0 0 3 3h11M15 10l4 4-4 4"/></symbol>
   </defs>
 </svg>
 
@@ -192,6 +202,9 @@
         <label>Titre d'épisode<input id="episode_title"></label>
       </div>
 
+      <details class="ftree" id="upTree" hidden><summary><svg class="i"><use href="#i-folder"/></svg>Fichiers et dossiers</summary><div class="ft"></div></details>
+      <details class="ftree" id="upAdv"><summary><svg class="i"><use href="#i-sliders"/></svg>Avancé</summary><div class="grid" id="advFacets"></div></details>
+      <details class="ftree" id="upMi"><summary><svg class="i"><use href="#i-film"/></svg>MediaInfo<span class="sz"></span></summary><div class="mib"></div></details>
       <div class="built" id="builtBox">
         <div class="eyebrow">Nom qui sera publié</div>
         <div class="mono big" id="built"></div>
@@ -297,37 +310,59 @@
     <!-- Lot -->
     <section class="panel" id="pB" hidden>
       <header class="ph"><span class="eyebrow">Lot</span><h2>Publier tout un dossier, sans y toucher</h2></header>
-      <p class="mut">Chaque sous-dossier ou fichier est comparé à Draupnirr par taille. Ce qui n'y est pas est haché, lu par MediaInfo, rattaché à son œuvre TMDB, nommé par Draupnirr — puis publié <b>seulement si tout est sûr</b> : œuvre certaine (titre et année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir », pour l'étape Uploader. Commence par une simulation.</p>
-      <p class="mut"><b>Musique</b> : chaque dossier de pistes, à toute profondeur, est un album et une release (<code>CD1</code>, <code>Disc 2</code>… restent avec leur album). L'édition MusicBrainz n'est prise que si elle est la seule à avoir le même titre, le même artiste et autant de pistes ; sinon l'album part sans, nommé d'après ses tags.</p>
-      <div class="grid">
-        <label class="span2">Dossier à passer au crible<input id="batchPath" placeholder="/home/moi/downloads"></label>
+      <details class="intro" id="batchIntro" open>
+        <summary><svg class="i"><use href="#i-info"/></svg>Comment le lot décide</summary>
+        <p class="mut">Chaque sous-dossier ou fichier est comparé à Draupnirr par taille. Ce qui n'y est pas est haché, lu par MediaInfo, rattaché à son œuvre TMDB, nommé par Draupnirr — puis publié <b>seulement si tout est sûr</b> : œuvre certaine (titre et année), facettes complètes, aucun avertissement de Ratatosk, aucun doublon. Le reste va en « à revoir », pour l'étape Uploader. Commence par une simulation.</p>
+        <p class="mut"><b>Musique</b> : chaque dossier de pistes, à toute profondeur, est un album et une release (<code>CD1</code>, <code>Disc 2</code>… restent avec leur album). L'édition MusicBrainz n'est prise que si elle est la seule à avoir le même titre, le même artiste et autant de pistes ; sinon l'album part sans, nommé d'après ses tags.</p>
+      </details>
+      <div class="grid batch-grid">
+        <label class="span2">Dossier à passer au crible<span class="pathgrp"><button id="batchBrowse" class="pick" type="button" title="Parcourir les dossiers" aria-label="Parcourir les dossiers"><svg class="i"><use href="#i-folder"/></svg></button><input id="batchPath" placeholder="/home/moi/downloads"><button id="batchPickLoad" type="button"><svg class="i"><use href="#i-refresh"/></svg><span>Lister le dossier</span></button></span></label>
         <label>Catégorie des films<select id="batchCatFilm"></select></label>
         <label>Catégorie des séries<select id="batchCatTV"></select></label>
-        <label id="batchSrcWrap" hidden>Source d'un album si rien ne l'indique<select id="batchSrc"><option value="">aucune : « à revoir »</option><option>WEB</option><option>CD</option><option>VINYL</option></select></label>
-        <label>Examiner au plus<input id="batchLimit" type="number" min="0" value="0" placeholder="0 = tout"></label>
-        <label>Publier au plus<input id="batchMax" type="number" min="0" value="0" placeholder="0 = sans plafond"></label>
-        <label title="Au-delà, l'entrée est ignorée sans être hachée : un dossier de plusieurs To (cross-seed, liens, collection) n'est pas une release.">Ignorer au-delà de (Go)<input id="batchMaxSize" type="number" min="0" value="300" placeholder="0 = sans plafond"></label>
-      </div>
-      <div class="row">
-        <label class="switch"><input type="checkbox" id="batchDry" checked><span></span>Simulation : rien n'est publié</label>
-        <label class="switch"><input type="checkbox" id="batchVideo" checked><span></span>Vidéos seulement</label>
-        <label class="switch"><input type="checkbox" id="batchMusic"><span></span>Musique : un album = une release</label>
-        <span class="grow"></span>
-        <button id="batchStop" type="button" hidden><svg class="i"><use href="#i-x"/></svg>Arrêter</button>
-        <button class="primary" id="batchStart" type="button"><svg class="i"><use href="#i-chevron-right"/></svg>Lancer</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div class="row" style="align-items:center"><span class="mut" id="batchPickCount">Liste le dossier pour choisir ce qui entre dans le lot ; sinon, tout y passe.</span><span class="grow"></span><button class="ghost" id="batchPickAll" type="button" hidden>Tout cocher</button><button class="ghost" id="batchPickNone" type="button" hidden>Tout décocher</button><button id="batchPickLoad" type="button"><svg class="i"><use href="#i-refresh"/></svg>Lister le dossier</button></div>
+        <label id="batchSrcWrap" class="span2" hidden>Source d'un album si rien ne l'indique<select id="batchSrc"><option value="">aucune : « à revoir »</option><option>WEB</option><option>CD</option><option>VINYL</option></select></label>
+        <label>Contenu<span class="seg wide" id="batchKind" role="radiogroup" aria-label="Contenu"><button type="button" role="radio" data-k="video" class="on" aria-checked="true">Vidéos</button><button type="button" role="radio" data-k="music" aria-checked="false">Musique</button><button type="button" role="radio" data-k="all" aria-checked="false">Tout</button></span></label>
+        <label>Examiner au plus<input id="batchLimit" type="number" min="0" placeholder="tout le dossier"></label>
+        <label>Publier au plus<input id="batchMax" type="number" min="0" placeholder="sans plafond"></label>
+        <label title="Au-delà, l'entrée est ignorée sans être hachée : un dossier de plusieurs To (cross-seed, liens, collection) n'est pas une release.">Ignorer au-delà de (Go)<input id="batchMaxSize" type="number" min="0" value="300" placeholder="sans plafond"></label>
       </div>
       <div id="batchSummary" hidden style="display:flex;flex-direction:column;gap:8px">
         <div class="row" style="align-items:center"><span class="mut" id="batchCount"></span><span class="grow"></span><b id="batchPct"></b></div>
         <div class="bar"><div id="batchProg" style="width:0"></div></div>
         <div class="mut" id="batchNow"></div>
       </div>
+      <div class="btabs" id="batchTabs" role="tablist" aria-label="États" hidden></div>
+      <div class="btools" id="batchTools" hidden>
+        <span class="with-icon bsearch"><svg class="i"><use href="#i-search"/></svg><input id="batchQ" type="search" placeholder="Filtrer : fr, 2160p, S01…" aria-label="Filtrer les releases"></span>
+        <span class="bact">
+          <button type="button" id="batchGroup" hidden><svg class="i"><use href="#i-st-rv"/></svg><span id="batchGroupLab"></span></button>
+          <button type="button" id="batchRun" hidden><svg class="i"><use href="#i-eye"/></svg><span id="batchRunLab"></span></button>
+          <label class="switch" title="N'afficher que les entrées décochées"><input type="checkbox" id="batchOffOnly"><span></span><b id="batchOffLab" style="font-weight:500">Décochées</b></label>
+        </span>
+      </div>
       <div class="list tbl" id="batchList"><div class="empty"><svg class="i"><use href="#i-folder"/></svg><span>Choisis un dossier : ses entrées s'affichent ici, à cocher.</span></div></div>
+      <footer class="pf">
+        <label class="switch"><input type="checkbox" id="batchDry" checked><span></span>Simulation : rien n'est publié</label>
+        <span class="mut grow bsum" id="batchPickCount">Liste le dossier pour choisir ce qui entre dans le lot.</span>
+        <button id="batchStop" type="button" hidden><svg class="i"><use href="#i-x"/></svg>Arrêter</button>
+        <button class="primary" id="batchStart" type="button"><svg class="i"><use href="#i-chevron-right"/></svg><span id="batchStartLab">Simuler</span></button>
+      </footer>
     </section>
   </div>
 </main>
+
+<dialog id="dirDlg" class="bdlg dirdlg" aria-labelledby="ddTitle">
+  <header><span class="nm grow"><b id="ddTitle">Choisir le dossier</b><small>Le lot passe au crible chaque sous-dossier ou fichier du dossier choisi.</small></span><button class="ghost" id="ddClose" type="button" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button></header>
+  <div class="bq"><button type="button" class="ghost" id="ddUp" title="Dossier parent" aria-label="Dossier parent"><svg class="i"><use href="#i-arrow-up"/></svg></button><input id="ddPath" class="mono" spellcheck="false" aria-label="Chemin"></div>
+  <div class="body"><div class="list" id="ddList"></div></div>
+  <footer><span class="mut grow" id="ddCount"></span><button type="button" id="ddCancel">Annuler</button><button type="button" class="primary" id="ddOk"><svg class="i"><use href="#i-check"/></svg>Choisir ce dossier</button></footer>
+</dialog>
+
+<dialog id="batchDlg" class="bdlg" aria-labelledby="bdName">
+  <header><span class="nm grow"><b id="bdName"></b><small id="bdSub"></small></span><span id="bdBadge"></span><button class="ghost" id="bdClose" type="button" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button></header>
+  <div class="bq" id="bdQueue" hidden></div>
+  <div class="body" id="bdBody" tabindex="-1"></div>
+  <footer id="bdFoot"></footer>
+</dialog>
 
 <dialog id="settings" class="drawer">
   <header>

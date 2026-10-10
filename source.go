@@ -10,6 +10,9 @@ import (
 // exactement les mêmes fonctions).
 type fileSource interface {
 	List(ctx context.Context, path string) ([]DirEntry, error)
+	// Dirs : comme List, sans la taille des dossiers (parcours complet de
+	// chacun) : pour naviguer vite dans un dossier énorme (sélecteur du lot).
+	Dirs(ctx context.Context, path string) ([]DirEntry, error)
 	MakeTorrent(ctx context.Context, path, source string, progress progressFunc) ([]byte, error)
 	MediaInfo(ctx context.Context, path string) (string, error)
 	// MainFile : chemin du plus gros fichier, dans la convention de la source.
@@ -26,6 +29,10 @@ type localSource struct{}
 
 func (localSource) List(_ context.Context, path string) ([]DirEntry, error) {
 	return listDir(path)
+}
+
+func (localSource) Dirs(_ context.Context, path string) ([]DirEntry, error) {
+	return listDirSizes(path, false)
 }
 
 func (localSource) MakeTorrent(_ context.Context, path, source string, progress progressFunc) ([]byte, error) {

@@ -303,7 +303,9 @@ func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *b
 
 	var pick *mbRelease
 	why := ""
-	if m.MusicBrainzID == "" {
+	if ch := s.hist.choiceFor(j.source, r.Path, r.Size); ch != nil && ch.MusicBrainzID != "" {
+		pick = &mbRelease{ID: ch.MusicBrainzID, Title: ch.Title, Artist: ch.Artist, Year: ch.Year}
+	} else if m.MusicBrainzID == "" {
 		s.setDetail(r, "MusicBrainz")
 		results, err := musicBrainzSearch(ctx, c, m)
 		if err != nil {

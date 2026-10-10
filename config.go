@@ -25,6 +25,8 @@ type Config struct {
 	UIPasswordHash string `json:"ui_password_hash,omitempty"`
 	// Mise à jour automatique au lancement (docs/23 §9.3) ; nil = oui.
 	AutoUpdate *bool `json:"auto_update,omitempty"`
+	// Explication de l'onglet Lot repliée (dépliée par défaut).
+	BatchIntroHidden bool `json:"batch_intro_hidden,omitempty"`
 }
 
 func (c *Config) autoUpdate() bool { return c.AutoUpdate == nil || *c.AutoUpdate }
