@@ -158,12 +158,12 @@ func TestMusicPresentation(t *testing.T) {
 	site := presTemplate{Name: "Fiche album", Family: &musique, Format: "bbcode", IsDefault: true, Site: true,
 		Body: "[center]{{#affiche}}[img]{{affiche}}[/img]\n{{/affiche}}[size=22][b]{{artiste}} — {{album}}[/b][/size]{{#annee}} [size=14]({{annee}})[/size]{{/annee}}[/center]\n\n[h2]Fiche[/h2]\n[list]\n[*][b]Release[/b] : [c]{{nom_release}}[/c]\n[*][b]Format[/b] : {{format_audio}}{{#source}} · {{source}}{{/source}}\n{{#label}}[*][b]Label[/b] : {{label}}{{/label}}\n{{#duree}}[*][b]Durée[/b] : {{duree}} · {{nb_pistes}} pistes{{/duree}}\n[*][b]Taille[/b] : {{taille}}\n{{#team}}[*][b]Team[/b] : {{team}}{{/team}}\n[/list]\n\n{{#pistes}}[h2]Pistes[/h2]\n{{pistes}}{{/pistes}}\n\n[hr]\n[center]{{#musicbrainz_url}}[url={{musicbrainz_url}}]Fiche MusicBrainz[/url] · {{/musicbrainz_url}}présentation de {{uploadeur}}, {{date}}[/center]"}
 	mine := presTemplate{Name: "Mes films", Family: &films, Format: "html", IsDefault: true, Body: "film"}
-	data := func(f string) map[string]string { return musicData(a, f, "nra") }
+	data := func(f string) map[string]string { return musicData(a, f, "skadi") }
 
 	desc, format := describe([]presTemplate{mine, site}, "musique", data, soberAlbum)
 	for _, want := range []string{"[img]https://coverartarchive.org/release/5000a285-b67e-4cfc-b54b-2b98f1810d2e/front-500[/img]",
 		"[b]Daft Punk — Random Access Memories[/b][/size] [size=14](2013)", "FLAC 24 bits / 88,2 kHz · WEB", "Columbia",
-		"14 min · 3 pistes", "[h2]Pistes[/h2]\n[list=1]\n[*]Give Life Back to Music (4:31)", "[url=https://musicbrainz.org/release/", "présentation de nra"} {
+		"14 min · 3 pistes", "[h2]Pistes[/h2]\n[list=1]\n[*]Give Life Back to Music (4:31)", "[url=https://musicbrainz.org/release/", "présentation de skadi"} {
 		if !strings.Contains(desc, want) {
 			t.Fatalf("modèle du site : %q absent de\n%s", want, desc)
 		}

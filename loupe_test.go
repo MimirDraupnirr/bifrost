@@ -132,10 +132,10 @@ func TestBatchDescriptionFollowsChosenWork(t *testing.T) {
 	pick := &tmdbResult{ID: 7, Title: "X", Year: float64(2023)}
 	fam := "series"
 	tpl := []presTemplate{{Body: "{{type}} {{episode}}", Format: "bbcode", Family: &fam, IsDefault: true}}
-	if desc, _ := batchDescription(a, pick, kindTV, "S02", tpl, "series-serie-tv", "nra"); desc != "Série S02" {
+	if desc, _ := batchDescription(a, pick, kindTV, "S02", tpl, "series-serie-tv", "skadi"); desc != "Série S02" {
 		t.Fatalf("présentation : %q", desc)
 	}
-	if desc, _ := batchDescription(a, pick, kindTV, "S02", nil, "series-serie-tv", "nra"); !strings.Contains(desc, "themoviedb.org/tv/7") {
+	if desc, _ := batchDescription(a, pick, kindTV, "S02", nil, "series-serie-tv", "skadi"); !strings.Contains(desc, "themoviedb.org/tv/7") {
 		t.Fatalf("lien TMDB de la série : %s", desc)
 	}
 }
