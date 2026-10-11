@@ -101,6 +101,7 @@ Un [`docker-compose.example.yml`](docker-compose.example.yml) est fourni, avec W
 | **rTorrent / ruTorrent, Transmission, Deluge** | liste et ajout ; les données sont re-hachées par la source |
 | **Aucun client** | le `.torrent` est gardé dans un dossier, à ajouter à la main |
 | **Chemins différents** | Bifröst en Docker et le client sous Windows ou hors du conteneur : *Réglages › Client torrent › Correspondance des chemins*, par exemple `/media/D_Test = D:\Test`. Bifröst traduit dans les deux sens, le client reçoit ses propres chemins |
+| **Fichiers écartés** | Ce que ta médiathèque dépose à côté des films (`*.trickplay`, `extrafanart`, `extrathumbs` par défaut) n'entre dans aucun torrent : *Réglages › Fichiers écartés des releases*, un motif par ligne. Ni listé, ni compté dans la taille, ni haché, sur ce poste comme sur la seedbox |
 
 <p align="center">
   <img src="docs/screens/fichiers-sombre.jpg" alt="Choix des fichiers, mode sombre" width="820">

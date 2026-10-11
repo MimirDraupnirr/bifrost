@@ -37,7 +37,7 @@ func TestMakeParseReseal(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(rel, "Subs", "fr.srt"), []byte("sous-titres"), 0o644)
 
 	var last int64
-	raw, err := makeTorrent(rel, "DRAUPNIRR", func(done, total int64) { last = done })
+	raw, err := makeTorrent(rel, "DRAUPNIRR", nil, func(done, total int64) { last = done })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestMakeTorrentFollowsSymlinks(t *testing.T) {
 	_ = os.Symlink(real, whole)
 
 	build := func(p string) *Torrent {
-		raw, err := makeTorrent(p, "DRAUPNIRR", nil)
+		raw, err := makeTorrent(p, "DRAUPNIRR", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,12 +130,12 @@ func TestMakeTorrentFollowsSymlinks(t *testing.T) {
 		if got := build(p); got.InfoHash != want.InfoHash || got.Size != 50_011 || len(got.Files) != 2 {
 			t.Fatalf("%s : %+v, attendu %+v", p, got, want)
 		}
-		if s := dirSize(p); s != 50_011 {
+		if s := dirSize(p, nil); s != 50_011 {
 			t.Fatalf("taille listée de %s : %d", p, s)
 		}
 	}
 	// Un lien vers un dossier se liste comme un dossier, à la taille de sa cible.
-	entries, err := listDir(filepath.Dir(whole))
+	entries, err := listDir(filepath.Dir(whole), nil)
 	if err != nil || len(entries) != 1 || !entries[0].IsDir || entries[0].Size != 50_011 {
 		t.Fatalf("lien vers un dossier listé : %+v %v", entries, err)
 	}
@@ -152,11 +152,11 @@ func TestFindAlbumsFollowsSymlinks(t *testing.T) {
 	if err := os.Symlink(album, filepath.Join(root, "Album")); err != nil {
 		t.Skip("liens symboliques indisponibles :", err)
 	}
-	got, err := findAlbums(root)
+	got, err := findAlbums(root, nil)
 	if err != nil || len(got) != 1 || got[0].Path != filepath.Join(root, "Album") || got[0].Size != 4000 {
 		t.Fatalf("album lié : %+v %v", got, err)
 	}
-	if _, err := findAlbums(filepath.Join(dir, "absent")); err == nil {
+	if _, err := findAlbums(filepath.Join(dir, "absent"), nil); err == nil {
 		t.Fatal("un dossier introuvable reste une erreur")
 	}
 }
