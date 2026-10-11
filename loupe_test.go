@@ -38,7 +38,7 @@ func TestListDirSizesSkipsFolders(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "Rel", "a.mkv"), make([]byte, 5000), 0o644)
 	_ = os.WriteFile(filepath.Join(dir, "b.mkv"), make([]byte, 300), 0o644)
 	size := func(sizes bool) map[string]int64 {
-		es, err := listDirSizes(dir, sizes)
+		es, err := listDirSizes(dir, sizes, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

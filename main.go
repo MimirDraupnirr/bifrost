@@ -83,6 +83,8 @@ func agent(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage : bifrost agent <mktorrent|mediainfo|ls|albums|version> …")
 		return 2
 	}
+	// --exclude motif (répété) : fichiers et dossiers que ls, albums et mktorrent passent.
+	args, skip := agentExcludes(args)
 	switch args[0] {
 	case "version":
 		fmt.Println(Version)
@@ -121,10 +123,10 @@ func agent(args []string) int {
 			sizes, args = false, args[1:]
 		}
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage : bifrost agent ls [--dirs] <dossier>")
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent ls [--exclude motif]… [--dirs] <dossier>")
 			return 2
 		}
-		entries, err := listDirSizes(args[1], sizes)
+		entries, err := listDirSizes(args[1], sizes, skip)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -133,10 +135,10 @@ func agent(args []string) int {
 	case "albums":
 		// bifrost agent albums <dossier> — les dossiers d'album (lot musique), en un seul appel.
 		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage : bifrost agent albums <dossier>")
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent albums [--exclude motif]… <dossier>")
 			return 2
 		}
-		albums, err := findAlbums(args[1])
+		albums, err := findAlbums(args[1], skip)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -171,11 +173,11 @@ func agent(args []string) int {
 		fs := flag.NewFlagSet("mktorrent", flag.ContinueOnError)
 		source := fs.String("source", "DRAUPNIRR", "tag source de l'info-dict")
 		if err := fs.Parse(args[1:]); err != nil || fs.NArg() != 1 {
-			fmt.Fprintln(os.Stderr, "usage : bifrost agent mktorrent [--source TAG] <chemin>")
+			fmt.Fprintln(os.Stderr, "usage : bifrost agent mktorrent [--exclude motif]… [--source TAG] <chemin>")
 			return 2
 		}
 		last := time.Now()
-		raw, err := makeTorrent(fs.Arg(0), *source, func(done, total int64) {
+		raw, err := makeTorrent(fs.Arg(0), *source, skip, func(done, total int64) {
 			if time.Since(last) > time.Second || done == total {
 				last = time.Now()
 				fmt.Fprintf(os.Stderr, "progress %d/%d\n", done, total)

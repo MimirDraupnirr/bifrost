@@ -91,10 +91,10 @@ type DirEntry struct {
 	Size  int64  `json:"size"`
 }
 
-func listDir(path string) ([]DirEntry, error) { return listDirSizes(path, true) }
+func listDir(path string, skip excludes) ([]DirEntry, error) { return listDirSizes(path, true, skip) }
 
 // listDirSizes : dirSizes faux = dossiers sans taille (0), sans les parcourir.
-func listDirSizes(path string, dirSizes bool) ([]DirEntry, error) {
+func listDirSizes(path string, dirSizes bool, skip excludes) ([]DirEntry, error) {
 	if path == "" {
 		home, _ := os.UserHomeDir()
 		path = home
@@ -106,7 +106,7 @@ func listDirSizes(path string, dirSizes bool) ([]DirEntry, error) {
 	}
 	out := make([]DirEntry, 0, len(items))
 	for _, it := range items {
-		if strings.HasPrefix(it.Name(), ".") {
+		if strings.HasPrefix(it.Name(), ".") || skip.match(it.Name()) {
 			continue
 		}
 		e := DirEntry{Name: it.Name(), Path: filepath.Join(path, it.Name())}
@@ -117,7 +117,7 @@ func listDirSizes(path string, dirSizes bool) ([]DirEntry, error) {
 			if e.IsDir {
 				e.Size = 0
 				if dirSizes {
-					e.Size = dirSize(e.Path)
+					e.Size = dirSize(e.Path, skip)
 				}
 			}
 		}
@@ -133,19 +133,20 @@ func listDirSizes(path string, dirSizes bool) ([]DirEntry, error) {
 }
 
 // dirSize : somme des fichiers, parcourus comme par makeTorrent (walkFiles :
-// fichiers cachés exclus, liens suivis) : la taille est celle du torrent,
+// fichiers cachés et motifs exclus, liens suivis) : la taille est celle du torrent,
 // celle que /api/torrents/match, le cache et le plafond du lot comparent.
 // ponytail: parcours complet ; mettre en cache si un dossier à 100k fichiers traîne.
-func dirSize(path string) int64 {
+func dirSize(path string, skip excludes) int64 {
 	var total int64
-	_ = walkFiles(path, func(_ string, size int64, _ error) error {
+	_ = walkFiles(path, skip, func(_ string, size int64, _ error) error {
 		total += size // une erreur arrive avec une taille nulle : on passe
 		return nil
 	})
 	return total
 }
 
-// walkFiles : les fichiers de root (fichiers cachés exclus), liens symboliques
+// walkFiles : les fichiers de root (fichiers cachés et motifs de skip exclus,
+// un dossier exclu avec tout son contenu), liens symboliques
 // SUIVIS — taille de la cible, dossiers liés parcourus. C'est le parcours
 // unique de makeTorrent, dirSize et findAlbums : la taille listée, celle du
 // torrent et ce qui est haché concordent (avant, un lien comptait pour la
@@ -155,7 +156,7 @@ func dirSize(path string) int64 {
 // cassé est ignoré (rien à seeder), de même qu'un lien vers un dossier déjà
 // parcouru, contenu dans l'un d'eux ou au-dessus : pas de boucle, aucun
 // fichier compté deux fois, et un lien vers « / » ne part pas hacher le disque.
-func walkFiles(root string, fn func(rel string, size int64, err error) error) error {
+func walkFiles(root string, skip excludes, fn func(rel string, size int64, err error) error) error {
 	var walked []string
 	var walk func(dir, prefix string) error
 	walk = func(dir, prefix string) error {
@@ -176,6 +177,12 @@ func walkFiles(root string, fn func(rel string, size int64, err error) error) er
 			}
 			if err != nil {
 				return fn(rel, 0, err)
+			}
+			if p != real && skip.match(d.Name()) {
+				if d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
 			}
 			if d.IsDir() || strings.HasPrefix(d.Name(), ".") {
 				return nil

@@ -345,6 +345,7 @@ func ensureAgent(ctx context.Context, r *remoteSource, client *ssh.Client) error
 type remoteSource struct {
 	cfg      SSHConfig
 	password string
+	skip     excludes
 }
 
 func (r *remoteSource) client() (*ssh.Client, error) {
@@ -389,7 +390,7 @@ func (r *remoteSource) ls(ctx context.Context, c *ssh.Client, p, flags string) (
 	if p == "" {
 		p = r.Home()
 	}
-	out, err := runSSH(ctx, c, agentPath+" agent ls "+flags+shellQuote(p), nil, nil)
+	out, err := runSSH(ctx, c, agentPath+" agent ls "+r.skip.flags()+flags+shellQuote(p), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +404,7 @@ func (r *remoteSource) MakeTorrent(ctx context.Context, p, source string, progre
 		return nil, err
 	}
 	defer c.Close()
-	raw, err := runSSH(ctx, c, agentPath+" agent mktorrent --source "+shellQuote(source)+" "+shellQuote(p), nil, func(line string) {
+	raw, err := runSSH(ctx, c, agentPath+" agent mktorrent "+r.skip.flags()+"--source "+shellQuote(source)+" "+shellQuote(p), nil, func(line string) {
 		var done, total int64
 		if _, err := fmt.Sscanf(line, "progress %d/%d", &done, &total); err == nil && progress != nil {
 			progress(done, total)

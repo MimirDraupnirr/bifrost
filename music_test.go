@@ -56,7 +56,7 @@ func TestFindAlbumsGroupsDiscFolders(t *testing.T) {
 	write("Films/Dune.2021.mkv", 1000)
 	write(".cache/x.flac", 1)
 
-	albums, err := findAlbums(root)
+	albums, err := findAlbums(root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,12 +74,12 @@ func TestFindAlbumsGroupsDiscFolders(t *testing.T) {
 		}
 	}
 	// Le dossier d'un album donné tel quel : c'est l'album.
-	one, _ := findAlbums(filepath.Join(root, "Daft Punk", "Alive 2007"))
+	one, _ := findAlbums(filepath.Join(root, "Daft Punk", "Alive 2007"), nil)
 	if len(one) != 1 || one[0].Name != "Alive 2007" {
 		t.Fatalf("album racine : %+v", one)
 	}
 	// La taille est celle du torrent : même valeur que makeTorrent.
-	raw, err := makeTorrent(filepath.Join(root, "Daft Punk", "Discovery"), "DRAUPNIRR", nil)
+	raw, err := makeTorrent(filepath.Join(root, "Daft Punk", "Discovery"), "DRAUPNIRR", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

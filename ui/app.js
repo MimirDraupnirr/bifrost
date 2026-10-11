@@ -38,7 +38,7 @@ async function load(){const s=await api('GET','/ui/state');st.state=s;const c=s.
   $('mi').innerHTML=s.mediainfo?ico('check')+'<span>mediainfo présent : les facettes seront lues dans les fichiers.</span>':ico('alert')+'<span>mediainfo absent — installe-le : <code>'+esc(s.mediainfo_hint)+'</code>. Sans lui, les facettes sont déclarées à la main et Ratatosk les vérifie.</span>';
   document.querySelector(`input[name=src][value=${c.source==='ssh'?'ssh':'local'}]`).checked=true;$('sshbox').hidden=c.source!=='ssh';
   $('cl_type').value=c.client?.type||'';$('cl_url').value=c.client?.url||'';$('cl_user').value=c.client?.user||'';$('cl_label').value=c.client?.label||'';$('cl_skip').checked=!!c.client?.skip_check;$('cl_paths').value=(c.client?.path_map||[]).map(m=>m.from+' = '+m.to).join('\n');
-  $('autoUpd').checked=!!s.auto_update;$('batchIntro').open=!c.batch_intro_hidden;
+  $('autoUpd').checked=!!s.auto_update;$('batchIntro').open=!c.batch_intro_hidden;$('excl').value=(c.exclude||[]).join('\n');
   if(s.update){$('upd').hidden=false;$('updTitle').textContent='Bifröst '+s.update.version+' est disponible (tu as '+s.version+')';
     let notes=s.update.notes||'';
     if(s.in_docker)notes+='\nEn Docker : docker pull ghcr.io/mimirdraupnirr/bifrost && docker compose up -d';
@@ -69,6 +69,8 @@ onSubmit($('connectForm'),()=>run($('connectBtn'),async()=>{$('connectErr').text
 onSubmit($('acctForm'),()=>run($('connect2'),async()=>{$('acctErr').textContent='';try{await connect(false,$('site2').value,$('token2').value);$('site').value=$('site2').value;toast('Connecté avec le nouveau jeton','ok');drawer.close()}catch(e){$('acctErr').textContent=e.message}}));
 
 onSubmit($('outForm'),()=>run($('saveOut'),async()=>{await api('POST','/ui/settings',{out_dir:$('outdir').value});toast('Dossier enregistré','ok')}));
+// Fichiers écartés : la taille listée change avec eux, la liste du lot est donc à relire.
+onSubmit($('exclForm'),()=>run($('saveExcl'),async()=>{const x=$('excl').value.split('\n').map(l=>l.trim()).filter(Boolean);await api('POST','/ui/settings',{exclude:x});st.state.config.exclude=x;toast('Fichiers écartés enregistrés : relis la liste du lot','ok')}));
 // Explication du Lot repliée ou non : gardée dans les paramètres ; repliée, le tableau prend la place.
 // Repliée, le tableau gagne exactement la hauteur du texte : le panneau garde sa taille.
 // Mesurée une fois par largeur (le texte se replie selon elle), sans animer la flèche pendant la mesure.

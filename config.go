@@ -27,6 +27,9 @@ type Config struct {
 	AutoUpdate *bool `json:"auto_update,omitempty"`
 	// Explication de l'onglet Lot repliée (dépliée par défaut).
 	BatchIntroHidden bool `json:"batch_intro_hidden,omitempty"`
+	// Fichiers et dossiers qu'une release n'emporte jamais (motifs glob sur le
+	// nom). Absent du fichier = defaultExcludes ; une liste vide n'exclut rien.
+	Exclude excludes `json:"exclude"`
 }
 
 func (c *Config) autoUpdate() bool { return c.AutoUpdate == nil || *c.AutoUpdate }
@@ -48,7 +51,7 @@ func defaultOutDir() string {
 }
 
 func loadConfig(path string) (*Config, error) {
-	cfg := &Config{OutDir: defaultOutDir(), Source: "local"}
+	cfg := &Config{OutDir: defaultOutDir(), Source: "local", Exclude: defaultExcludes}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil

@@ -247,10 +247,19 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 		Client           *ClientConfig `json:"client"`
 		AutoUpdate       *bool         `json:"auto_update"`
 		BatchIntroHidden *bool         `json:"batch_intro_hidden"`
+		Exclude          *excludes     `json:"exclude"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		fail(w, err)
 		return
+	}
+	var skip excludes
+	if in.Exclude != nil {
+		var err error
+		if skip, err = in.Exclude.clean(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 	s.mu.Lock()
 	s.applySettings(in.OutDir, in.Source, in.SSH, in.Password)
@@ -265,6 +274,9 @@ func (s *server) settings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.BatchIntroHidden != nil {
 		s.cfg.BatchIntroHidden = *in.BatchIntroHidden
+	}
+	if in.Exclude != nil {
+		s.cfg.Exclude = skip
 	}
 	err := saveConfig(s.configPath, s.cfg)
 	s.mu.Unlock()
@@ -305,9 +317,9 @@ func (s *server) source() fileSource {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cfg.Source == "ssh" {
-		return &remoteSource{cfg: s.cfg.SSH, password: s.sshPassword}
+		return &remoteSource{cfg: s.cfg.SSH, password: s.sshPassword, skip: s.cfg.Exclude}
 	}
-	return localSource{}
+	return localSource{skip: s.cfg.Exclude}
 }
 
 func (s *server) sshTest(w http.ResponseWriter, r *http.Request) {

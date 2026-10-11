@@ -237,7 +237,7 @@ func pieceLength(total int64) int64 {
 
 type progressFunc func(done, total int64)
 
-func makeTorrent(path, source string, progress progressFunc) ([]byte, error) {
+func makeTorrent(path, source string, skip excludes, progress progressFunc) ([]byte, error) {
 	path = filepath.Clean(path)
 	st, err := os.Stat(path)
 	if err != nil {
@@ -253,7 +253,7 @@ func makeTorrent(path, source string, progress progressFunc) ([]byte, error) {
 	if st.IsDir() {
 		// Liens suivis : la longueur déclarée est celle de la cible, celle
 		// qu'os.Open lit ; abs passe par le chemin d'origine (ordre inchangé).
-		err = walkFiles(path, func(rel string, size int64, err error) error {
+		err = walkFiles(path, skip, func(rel string, size int64, err error) error {
 			if err != nil {
 				return err
 			}

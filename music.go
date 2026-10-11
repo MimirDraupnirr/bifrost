@@ -34,11 +34,11 @@ var reDisc = regexp.MustCompile(`(?i)^(cd|dis[ck]|disque)[\s._-]*\d{1,2}\b`)
 // album ; un dossier de disque compte pour son parent ; un album rangé dans
 // un autre (bonus, sous-dossier) est déjà dans le torrent du parent. Name =
 // chemin relatif à root, pour distinguer deux « Greatest Hits ».
-func findAlbums(root string) ([]DirEntry, error) {
+func findAlbums(root string, skip excludes) ([]DirEntry, error) {
 	root = filepath.Clean(root)
 	withTracks := map[string]bool{}
 	// Liens suivis, comme au hachage : un dossier de liens vers des albums en est un.
-	err := walkFiles(root, func(rel string, _ int64, err error) error {
+	err := walkFiles(root, skip, func(rel string, _ int64, err error) error {
 		switch {
 		case err != nil && rel == "":
 			return err // le dossier lui-même est illisible
@@ -76,14 +76,14 @@ func findAlbums(root string) ([]DirEntry, error) {
 		if p == root {
 			name = filepath.Base(root)
 		}
-		out = append(out, DirEntry{Name: filepath.ToSlash(name), Path: p, IsDir: true, Size: dirSize(p)})
+		out = append(out, DirEntry{Name: filepath.ToSlash(name), Path: p, IsDir: true, Size: dirSize(p, skip)})
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path) })
 	return out, nil
 }
 
-func (localSource) Albums(_ context.Context, root string) ([]DirEntry, error) {
-	return findAlbums(root)
+func (l localSource) Albums(_ context.Context, root string) ([]DirEntry, error) {
+	return findAlbums(root, l.skip)
 }
 
 func (r *remoteSource) Albums(ctx context.Context, root string) ([]DirEntry, error) {
@@ -92,7 +92,7 @@ func (r *remoteSource) Albums(ctx context.Context, root string) ([]DirEntry, err
 		return nil, err
 	}
 	defer c.Close()
-	out, err := runSSH(ctx, c, agentPath+" agent albums "+shellQuote(root), nil, nil)
+	out, err := runSSH(ctx, c, agentPath+" agent albums "+r.skip.flags()+shellQuote(root), nil, nil)
 	if err != nil {
 		return nil, err
 	}

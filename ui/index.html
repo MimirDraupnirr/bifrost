@@ -417,6 +417,15 @@
     </section>
 
     <section>
+      <h2>Fichiers écartés des releases</h2>
+      <p class="mut">Ce que ta médiathèque dépose à côté des films (vignettes, fonds, aperçus) n'entre jamais dans un torrent : ni listé, ni compté dans la taille, ni haché. Un motif par ligne, comparé au nom seul du fichier ou du dossier, sans tenir compte des majuscules ; <code>*</code> remplace n'importe quels caractères. Un dossier écarté l'est avec tout son contenu.</p>
+      <form class="stack" id="exclForm">
+        <label for="excl">Motifs<textarea id="excl" class="short mono" spellcheck="false" placeholder="*.trickplay"></textarea></label>
+        <div class="row end"><button id="saveExcl" type="submit">Enregistrer</button></div>
+      </form>
+    </section>
+
+    <section>
       <h2>Client torrent</h2>
       <p class="mut">Pour lister ce que tu seedes déjà et remettre le .torrent Draupnirr sur les mêmes données après publication. Sans client, le .torrent est gardé dans le dossier de sortie.</p>
       <p class="mut">Le client peut être <b>sur ce PC</b> ou sur une seedbox : Bifröst lui parle par son interface Web. Sur un client de bureau, active-la d'abord — qBittorrent : Outils › Options › Interface Web (port 8080) · Transmission : Préférences › Accès distant (9091) · Deluge : plugin WebUI (8112) · rTorrent : ruTorrent. Puis « Détecter sur ce poste ».</p>
