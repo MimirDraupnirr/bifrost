@@ -191,9 +191,9 @@ function showAnalysis(a){const n=a.nomenclature;
     $('advFacets').querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{el.dataset.t=1;reanalyze()})}
   advCatFill()}
 // Sous-catégories de la famille du type TMDB (film ou série), comme dans la loupe ; la catégorie
-// (bdCat retombe sur Série TV / Film tant que la vue Lot n'a pas rempli ses sélecteurs : sinon
-// la première sous-catégorie de Séries, l'image disque ISO, l'emportait.)
 // hors de cette famille, elle passe à celle du lot pour ce type (Série TV, Film), ou à la première sous-catégorie.
+// bdCat retombe sur Série TV / Film tant que la vue Lot n'a pas rempli ses sélecteurs : sinon la
+// première sous-catégorie de Séries, l'image disque ISO, l'emportait.
 function advCatFill(){const s=$('advCat');if(!s)return;const k=$('kind').value,def=bdCat(k);s.innerHTML=catFamily(def);
   const opts=[...s.options].map(o=>o.value),v=$('category').value;
   if(opts.includes(v)){s.value=v;return}
