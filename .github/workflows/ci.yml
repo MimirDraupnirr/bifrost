@@ -25,6 +25,17 @@ jobs:
           for t in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
             GOOS=${t%/*} GOARCH=${t#*/} CGO_ENABLED=0 go build -tags noagents -o /dev/null . && echo "ok $t"
           done
+  desktop:
+    name: desktop
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Dépendances WebKitGTK
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      # tauri-build vérifie que le sidecar existe ; un fichier vide suffit pour compiler.
+      - run: mkdir -p desktop/src-tauri/binaries && touch desktop/src-tauri/binaries/bifrost-x86_64-unknown-linux-gnu
+      - run: cargo check --locked --manifest-path desktop/src-tauri/Cargo.toml
   vuln:
     name: govulncheck
     runs-on: ubuntu-latest

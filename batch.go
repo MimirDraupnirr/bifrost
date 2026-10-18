@@ -305,7 +305,10 @@ type batchEnv struct {
 }
 
 func (s *server) runBatch(ctx context.Context, j *batchJob) {
+	// L'application de bureau garde l'icône dans la barre des tâches tant qu'un lot tourne.
+	signal("BIFROST_BATCH 1")
 	finish := func(err error) {
+		defer signal("BIFROST_BATCH 0")
 		s.mu.Lock()
 		j.Running, j.Done = false, true
 		if err != nil && !errors.Is(err, context.Canceled) {
