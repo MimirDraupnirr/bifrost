@@ -1214,6 +1214,12 @@ func (s *server) batchListHandler(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	s.mu.Lock()
+	if s.cfg.BatchDir != root {
+		s.cfg.BatchDir = root
+		_ = saveConfig(s.configPath, s.cfg)
+	}
+	s.mu.Unlock()
 	// La dernière décision connue par entrée : la page l'affiche et décoche ce qui est déjà publié.
 	type listed struct {
 		DirEntry

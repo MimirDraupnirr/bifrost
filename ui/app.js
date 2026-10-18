@@ -400,16 +400,24 @@ $('crossAll').onclick=()=>run($('crossAll'),async()=>{const todo=st.cross.filter
 
 // ---- Vue Lot ----
 st.batchTimer=null;st.batchKind='video';st.batchTab='*';st.batchSort=null;st.batchJob=null;st.batchPick=null;st.batchOffSet=null;st.batchSel=[];
-function batchInit(){if(!$('batchPath').value)$('batchPath').value=$('path').value||'';
+// Le dossier du lot : le dernier listé (gardé par le serveur), sinon celui de l'onglet Uploader.
+function batchInit(){if(!$('batchPath').value)$('batchPath').value=st.state?.config.batch_dir||$('path').value||'';
   const cats=[...$('category').options].map(o=>`<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('');
   if(!$('batchCatFilm').options.length){$('batchCatFilm').innerHTML=cats;$('batchCatTV').innerHTML=cats;$('batchCatFilm').value='films-film';$('batchCatTV').value='series-serie-tv'}
   batchMode();batchPoll();if($('batchPath').value&&!st.batchPick)batchPickLoad().catch(()=>{})}
 // États d'une ligne du lot : les libellés que le serveur envoie (rowStatus dans batch.go).
 const BS=Object.freeze({wait:'attente',run:'en cours',pub:'publié',sim:'simulé',rev:'à revoir',rv:'revu',err:'erreur',present:'déjà présent',ign:'ignoré'});
 // Un onglet par état, dans cet ordre ; '' = pas encore examinée. Publié est épinglé à droite.
-const BTABS=[{k:'',lab:'Nouveau',ic:'st-new'},{k:BS.run,lab:'En cours',ic:'st-run',c:'run'},{k:BS.wait,lab:'En attente',ic:'st-wait',c:'wait'},
-  {k:BS.sim,lab:'Simulé',ic:'st-sim',c:'sim'},{k:BS.rev,lab:'À revoir',ic:'eye',c:'rev'},{k:BS.rv,lab:'Revu',ic:'st-rv',c:'rv'},{k:BS.err,lab:'Erreur',ic:'alert',c:'err'},
-  {k:BS.present,lab:'Déjà présent',ic:'st-dup',c:'run'},{k:BS.ign,lab:'Ignoré',ic:'st-skip',c:'wait'},{k:BS.pub,lab:'Publié',ic:'st-pub',c:'pub'}];
+const BTABS=[{k:'',lab:'Nouveau',ic:'st-new',d:'Pas encore examinée par un lot.'},
+  {k:BS.run,lab:'En cours',ic:'st-run',c:'run',d:'Le lot la traite : hachage, MediaInfo, analyse.'},
+  {k:BS.wait,lab:'En attente',ic:'st-wait',c:'wait',d:'Dans la file du lot en cours.'},
+  {k:BS.sim,lab:'Simulé',ic:'st-sim',c:'sim',d:'La simulation la juge publiable. Décoche « Simulation » pour la publier.'},
+  {k:BS.rev,lab:'À revoir',ic:'eye',c:'rev',d:'Le lot n\'a pas osé : œuvre incertaine, facettes manquantes ou avertissement. La loupe dit pourquoi et permet de choisir l\'œuvre.'},
+  {k:BS.rv,lab:'Revu',ic:'st-rv',c:'rv',d:'Œuvre choisie à la main : le prochain lot la publie avec ce choix.'},
+  {k:BS.err,lab:'Erreur',ic:'alert',c:'err',d:'Échec technique (lecture, réseau…). Relancer le lot suffit souvent.'},
+  {k:BS.present,lab:'Déjà présent',ic:'st-dup',c:'dup',d:'Déjà sur Draupnirr (même taille ou même infohash) : rien à faire.'},
+  {k:BS.ign,lab:'Ignoré',ic:'st-skip',c:'ign',d:'Écartée sans être hachée : pas une vidéo, trop grosse, ou ignorée à la main.'},
+  {k:BS.pub,lab:'Publié',ic:'st-pub',c:'pub',d:'Sur Draupnirr : la ligne mène à sa page.'}];
 const bTab=s=>BTABS.find(t=>t.k===(s||''));
 const bRank=s=>BTABS.findIndex(t=>t.k===(s||''));
 const bBadge=s=>bTab(s)?.c||'wait';
@@ -445,14 +453,15 @@ const bSub=r=>[r.built||r.tmdb,r.edition&&'MusicBrainz : '+r.edition].filter(Boo
 function renderBatchTabs(rows,running){const n=new Map();rows.forEach(r=>n.set(r.status||'',(n.get(r.status||'')||0)+1));
   // Pendant un lot, « En attente » reste ouvert même vide : il se vide au fil du lot, la fin ouvre le résultat.
   if(st.batchTab!=='*'&&st.batchTab!==BS.pub&&!n.get(st.batchTab)&&!(running&&st.batchTab===BS.wait)){st.batchTab='*';st.batchOffSet=null}
-  // Picto et nombre ; l'onglet ouvert déplie aussi son nom.
-  const t=(k,lab,ic,c,cnt)=>{const on=st.batchTab===k;return `<button type="button" role="tab" data-t="${esc(k)}" class="${on?'on':''}" aria-selected="${on}" title="${esc(lab)} · ${cnt}" aria-label="${esc(lab)}, ${cnt}"><span class="pil ${c||''}">${ico(ic)}${on?`<span class="lab">${esc(lab)}</span>`:''}<span class="cnt">${cnt}</span></span></button>`};
-  const html='<div class="scroll">'+t('*','Tout','list','',rows.length)+BTABS.filter(x=>x.k!==BS.pub&&(n.get(x.k)||x.k===st.batchTab)).map(x=>t(x.k,x.lab,x.ic,x.c,n.get(x.k)||0)).join('')+
-    '</div><div class="pinned">'+t(BS.pub,'Publié','st-pub','pub',n.get(BS.pub)||0)+'</div>';
+  // Picto, nom et nombre ; le survol dit ce que l'état veut dire, le bouton (i) les explique tous.
+  const t=(k,lab,ic,c,cnt,d='')=>{const on=st.batchTab===k;return `<button type="button" role="tab" data-t="${esc(k)}" class="${on?'on':''}" aria-selected="${on}" title="${esc(d||lab)}" aria-label="${esc(lab)}, ${cnt}"><span class="pil ${c||''}">${ico(ic)}<span class="lab">${esc(lab)}</span><span class="cnt">${cnt}</span></span></button>`};
+  const html='<div class="scroll">'+t('*','Tout','list','',rows.length)+BTABS.filter(x=>x.k!==BS.pub&&(n.get(x.k)||x.k===st.batchTab)).map(x=>t(x.k,x.lab,x.ic,x.c,n.get(x.k)||0,x.d)).join('')+
+    '</div><div class="pinned">'+t(BS.pub,'Publié','st-pub','pub',n.get(BS.pub)||0,bTab(BS.pub).d)+`<button type="button" class="help" id="batchLegend" aria-haspopup="dialog" title="Que veulent dire ces états ?" aria-label="Que veulent dire ces états ?">${ico('info')}</button></div>`;
   // Réécrits seulement s'ils changent : le suivi du lot (toutes les 2 s) ne relance ni l'animation ni le défilement.
   if(html===st.batchTabsHtml)return;st.batchTabsHtml=html;const sc=$('batchTabs').querySelector('.scroll')?.scrollLeft||0;
   $('batchTabs').innerHTML=html;$('batchTabs').querySelector('.scroll').scrollLeft=sc;
-  $('batchTabs').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.batchTab=b.dataset.t;st.batchOffSet=null;renderBatchTable()})}
+  $('batchTabs').querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{st.batchTab=b.dataset.t;st.batchOffSet=null;renderBatchTable()});
+  $('batchLegend').onclick=e=>infoPop(e.currentTarget,'<b>Les états du lot</b><dl class="stlegend">'+BTABS.map(x=>`<dt><span class="bdg ${x.c||'wait'}">${ico(x.ic)}${esc(x.lab)}</span></dt><dd>${esc(x.d)}</dd>`).join('')+'</dl>')}
 function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),dry=$('batchDry').checked;
   $('batchTabs').hidden=$('batchTools').hidden=!rows.length;
   if(!rows.length){$('batchList').classList.remove('all');$('batchList').innerHTML=`<div class="empty">${ico('folder')}<span>${p?'Ce dossier est vide.':'Choisis un dossier : ses entrées s\'affichent ici, à cocher.'}</span></div>`;
@@ -477,7 +486,10 @@ function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),d
   st.batchVis=sorted.map(r=>r.path);const rq=sorted.filter(batchCanChoose);
   $('batchRun').hidden=ro||!rq.length;$('batchRunLab').textContent=`Revoir à la suite (${rq.length})`;
   // Groupe : les releases cochées parmi celles affichées.
-  const gq=rq.filter(r=>r.on);$('batchGroup').hidden=gq.length<2||st.batchKind==='music';$('batchGroupLab').textContent=`Une œuvre pour ces ${gq.length}`;
+  // Le titre le plus fréquent parmi les cochées : un titre différent coché à côté n'entre pas dans le groupe.
+  const gt={};rq.filter(r=>r.on).forEach(r=>{const k=bdTitle(r.name);if(k)(gt[k]||=[]).push(r)});const gq=Object.values(gt).sort((a,b)=>b.length-a.length)[0]||[];st.batchGroupPaths=gq.map(r=>r.path);
+  $('batchGroup').hidden=gq.length<2||st.batchKind==='music';const gn=gq[0]?bdGuess(gq[0].name):'';
+  $('batchGroupLab').textContent=`Une œuvre pour ${gq.length} « ${gn.length>28?gn.slice(0,27)+'…':gn} »`;$('batchGroup').title=`Choisir une seule fois l'œuvre TMDB de ces ${gq.length} releases cochées du même titre ; chacune garde sa saison.`;
   $('batchList').classList.toggle('all',all);
   $('batchList').innerHTML=(vis.length?`<div class="b h">${master?'<input type="checkbox" id="batchMaster" aria-label="Cocher les lignes affichées">':'<span></span>'}${h('name','Release<small>dossier → nom Draupnirr</small>')}${h('size','Taille','justify-content:flex-end')}${all?`<span class="st">${h('status','État')}</span>`:''}<span class="eyebrow det">Détail</span><span></span></div>`:`<div class="empty"><span>${k?'Aucune release ne correspond à « '+esc($('batchQ').value.trim())+' » ici.':'Rien dans cet onglet.'}</span></div>`)+
     sorted.map(r=>{const sub=bSub(r),lock=bPub(r);return `<div class="b ${r.pick&&!r.on&&!lock?'off':''} ${r.pick&&!running&&!lock?'pk':''}" data-p="${esc(r.path)}">${lock?`<span class="lock" title="Publié : ni republié ni resimulé">${ico('check')}</span>`:r.pick?`<input type="checkbox" ${r.on?'checked':''} ${running?'disabled':''} aria-label="Inclure ${esc(r.name)}">`:'<span></span>'}`+
@@ -497,7 +509,7 @@ function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),d
   $('batchList').querySelectorAll('.h button[data-k]').forEach(b=>b.onclick=()=>{st.batchSort=st.batchSort&&st.batchSort.k===b.dataset.k?{k:b.dataset.k,d:-st.batchSort.d}:{k:b.dataset.k,d:1};renderBatchTable()})}
 const bqChoosable=()=>{const rows=batchRows().rows;return (st.batchVis||[]).filter(p=>{const r=rows.find(x=>x.path===p);return r&&batchCanChoose(r)})};
 $('batchRun').onclick=()=>{const ps=bqChoosable();if(ps.length)bqOpen(ps,ps[0])};
-$('batchGroup').onclick=()=>{const on=st.batchPick?.on;batchGroupOpen(bqChoosable().filter(p=>on?.has(p)))};
+$('batchGroup').onclick=()=>batchGroupOpen(st.batchGroupPaths||[]);
 $('batchQ').oninput=()=>{st.batchOffSet=null;renderBatchTable()};
 $('batchOffOnly').onchange=()=>{st.batchOffSet=null;renderBatchTable()};
 $('batchDry').onchange=()=>renderBatchTable();
@@ -546,12 +558,13 @@ $('batchStop').onclick=()=>api('POST','/ui/batch/stop').then(()=>toast('Arrêt d
 // ---- Loupe : détail d'une ligne, œuvre ou édition choisie à la main ----
 // Un choix fait passer la ligne « revu » : le lot suivant prend cette œuvre au lieu de chercher.
 st.bd=null;
-const bdGuess=n=>n.replace(/\.[a-z0-9]{2,4}$/i,'').split(/[ ._(\[-](?:19|20)\d\d\b|[ ._]S\d\d|[ ._](?:2160|1080|720|576|480)p|\[/i)[0].replace(/[._]+/g,' ').trim();
+// Un préfixe [TEAM] (format C411) n'est pas le titre : sans ça, la recherche partait vide.
+const bdGuess=n=>n.replace(/\.[a-z0-9]{2,4}$/i,'').replace(/^\s*\[[^\]]*\]\s*/,'').split(/[ ._(\[-](?:19|20)\d\d\b|[ ._]S\d\d|[ ._](?:2160|1080|720|576|480)p|\[/i)[0].replace(/[._]+/g,' ').trim();
 function batchOpen(path){const r=batchRows().rows.find(x=>x.path===path);if(!r)return;
   const music=st.batchKind==='music',[artist,album]=r.name.includes(' - ')?r.name.split(' - ',2):['',r.name],ch=r.choice?.ignored?null:r.choice;
   // Le choix déjà fait revient tel quel : œuvre, saison et facettes retouchées.
   const pick=ch?(ch.musicbrainz_id?{title:ch.title,year:ch.year,sub:ch.artist||'',img:'',choice:ch}:{title:ch.title,year:ch.year,sub:ch.tmdb_type===TK.tv?'Série':'Film',img:ch.poster_url,choice:ch}):null;
-  st.bd={r,music,pick,kind:ch?.tmdb_type||(r.episode?TK.tv:TK.movie),q:ch&&!music?ch.title:bdGuess(r.name),artist:ch?.artist||artist.trim(),album:ch&&music?ch.title:bdGuess(album),results:[],
+  st.bd={r,music,pick,kind:ch?.tmdb_type||(r.episode?TK.tv:TK.movie),q:ch&&!music?ch.title:(!music&&r.tmdb?.replace(/\s*\(\d+\)$/,''))||bdGuess(r.name),artist:ch?.artist||artist.trim(),album:ch&&music?ch.title:bdGuess(album),results:[],
     fiche:null,facets:{...(ch?.facets||{})},episode:ch?.episode||'',cat:ch?.category||''};
   $('bdName').textContent=r.name;$('bdSub').textContent=`${human(r.size)} · ${r.path}`;
   $('bdBadge').innerHTML=r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'';

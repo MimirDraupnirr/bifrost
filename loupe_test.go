@@ -105,6 +105,9 @@ func TestBatchListCarriesEpisode(t *testing.T) {
 	s := newServer(&Config{Source: "local"}, filepath.Join(t.TempDir(), "config.json"))
 	rec := httptest.NewRecorder()
 	s.batchListHandler(rec, httptest.NewRequest("GET", "/ui/batch/list?path="+dir, nil))
+	if s.cfg.BatchDir != dir {
+		t.Errorf("dossier du lot non retenu : %q", s.cfg.BatchDir)
+	}
 	var out struct {
 		Entries []struct {
 			Name    string `json:"name"`
