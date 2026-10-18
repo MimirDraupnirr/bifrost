@@ -91,6 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           L="-s -w -X main.Version=${GITHUB_REF_NAME}"
+          mkdir -p desktop/src-tauri/binaries  # ignoré par git : absent du checkout
           for a in amd64 arm64; do GOOS=linux GOARCH=$a CGO_ENABLED=0 go build -tags noagents -ldflags "$L" -o agent/bifrost-linux-$a .; done
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -ldflags "$L" -o "desktop/src-tauri/binaries/bifrost-${{ matrix.triple }}${{ matrix.exe }}" .
           # La version du tag, par un fichier : tauri-action découpe `args` et en ôte les guillemets.
