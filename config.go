@@ -27,6 +27,8 @@ type Config struct {
 	AutoUpdate *bool `json:"auto_update,omitempty"`
 	// Explication de l'onglet Lot repliée (dépliée par défaut).
 	BatchIntroHidden bool `json:"batch_intro_hidden,omitempty"`
+	// Dernier dossier listé dans l'onglet Lot : il revient au lancement suivant.
+	BatchDir string `json:"batch_dir,omitempty"`
 	// Fichiers et dossiers qu'une release n'emporte jamais (motifs glob sur le
 	// nom). Absent du fichier = defaultExcludes ; une liste vide n'exclut rien.
 	Exclude excludes `json:"exclude"`
