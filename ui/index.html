@@ -6,6 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/svg+xml" href="./logo.svg">
 <title>Bifröst</title>
+<link rel="stylesheet" href="./vendor/sweetalert2.min.css">
 <link rel="stylesheet" href="./app.css">
 </head>
 <body>
@@ -264,7 +265,7 @@
             <button type="button" data-pop="img" title="Image par URL"><svg class="i"><use href="#i-image"/></svg></button>
             <select id="varSel" title="Insérer la valeur d'une variable du modèle"><option value="">Insérer une variable…</option></select>
           </div>
-          <div class="pop" id="pop" hidden></div>
+          <div class="pop" id="pop" popover></div>
           <textarea id="description" spellcheck="false" placeholder="Décris la release : qualité, sources, captures… La barre d'outils insère les balises autour de la sélection."></textarea>
         </div>
         <div class="pv">
@@ -445,7 +446,8 @@
   </div>
 </dialog>
 
-<div id="toasts" aria-live="polite"></div>
+<div id="bfPop" class="npop" popover role="dialog" aria-label="Détails"></div>
+<script src="./vendor/sweetalert2.min.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

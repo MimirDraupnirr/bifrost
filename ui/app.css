@@ -2,7 +2,9 @@
    bleu-nuit, un seul accent chaud (l'or de Draupnirr) et l'arc-en-ciel du pont
    réservé au rail de progression. */
 :root{
-  --bg:#EDF0F4;--surface:#FFFFFF;--sunk:#F5F7FA;--ink:#141A22;--mut:#5E6A7A;--line:#D5DBE4;--line-strong:#B9C2CF;
+  --bg:#EEF1F5;--surface:#FFFFFF;--sunk:#F6F8FB;--ink:#121821;--mut:#556275;--line:#D6DCE5;--line-strong:#C3CBD7;
+  --night:#0F1A2B;--night-2:#1C2B44;--night-ink:#E8EDF4;--night-mut:#B8C5D6;--night-line:#2B3B55;
+  --pop-shadow:0 12px 32px -12px rgba(15,26,43,.35),0 2px 6px rgba(15,26,43,.08);
   --fjord:#1F3B63;--fjord-ink:#FFFFFF;--fjord-soft:#E5ECF6;
   --gold:#8C640E;--gold-soft:#F6ECCF;
   --ok:#1D7A46;--ok-soft:#DFF2E6;--sim:#4F9A6C;--sim-soft:#EDF7F1;--rv:#5B44B0;--rv-soft:#ECE8F8;--run:#2F5D9E;--run-soft:#EEF4FC;--warn:#8A5A0B;--warn-soft:#FBF0D5;--err:#A32D2D;--err-soft:#F9E1E1;
@@ -18,11 +20,13 @@
   --gold:#E3BB4F;--gold-soft:#3A3014;
   --ok:#5DC487;--ok-soft:#17311F;--sim:#9AD8B1;--sim-soft:#1A2A21;--rv:#B9A8F2;--rv-soft:#272042;--run:#9CC5F2;--run-soft:#1A2A40;--warn:#E0B04C;--warn-soft:#3A2E12;--err:#F08080;--err-soft:#3F1C1C;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 32px -16px rgba(0,0,0,.6);
+  --night:#0A111C;--night-2:#172338;--night-line:#24324A;
+  --pop-shadow:0 16px 40px -12px rgba(0,0,0,.7),0 0 0 1px #283240;
 }}
 
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);font-variant-numeric:tabular-nums;padding-top:56px}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans);font-variant-numeric:tabular-nums;padding-top:59px}
 [hidden]{display:none!important}
 h1,h2,h3,p{margin:0}
 h1{font-size:22px;font-weight:650;letter-spacing:-.02em;line-height:1.2}
@@ -36,7 +40,12 @@ a{color:var(--fjord)}
 .grow{flex:1 1 auto;min-width:0}
 
 /* ---- en-tête fixe ---- */
-.top{position:fixed;inset:0 0 auto 0;height:56px;z-index:20;display:flex;align-items:center;gap:14px;padding:0 20px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+/* Bandeau de nuit, et l'arc-en-ciel du pont en filet dessous. */
+.top{position:fixed;inset:0 0 auto 0;height:56px;z-index:20;display:flex;align-items:center;gap:14px;padding:0 20px;background:var(--night);color:var(--night-ink)}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:-3px;height:3px;background:var(--rainbow)}
+.top .brand .ver{color:var(--night-mut)}
+.top .who{color:var(--night-mut);border-color:var(--night-line)}
+.top button.ghost{color:var(--night-ink)}.top button.ghost:hover{background:var(--night-2)}
 .brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;margin-right:auto}
 .brand .mark{width:30px;height:30px;border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .brand .name{font-size:18px;font-weight:700;letter-spacing:-.03em}
@@ -245,7 +254,8 @@ main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
 .tb select{height:32px;font-size:13px;width:auto;max-width:220px;margin-left:auto;padding:0 8px;border-color:transparent;background:transparent;color:var(--mut)}
 .tb select:hover{color:var(--ink)}
 .ed textarea{border-radius:0 0 var(--r) var(--r);height:360px;margin:0}
-.pop{position:absolute;z-index:5;top:46px;left:6px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);box-shadow:var(--shadow);padding:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 12px)}
+.pop{position:fixed;inset:auto;margin:0;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r);box-shadow:var(--shadow);padding:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 12px)}
+.pop:not(:popover-open){display:none}
 .pop input{height:34px;font-size:14px;width:260px;max-width:100%}
 .pop button{height:34px;padding:0 12px}
 .pop .sw{width:28px;height:28px;padding:0;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line-strong)}
@@ -296,10 +306,6 @@ main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
 .callout button{align-self:flex-start}
 
 /* ---- toasts ---- */
-#toasts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:50;width:min(480px,calc(100% - 32px));pointer-events:none}
-.toast{display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-radius:var(--r);background:var(--ink);color:var(--bg);font-size:13px;box-shadow:var(--shadow);animation:rise .2s ease-out;pointer-events:auto}
-.toast .i{flex:none;margin-top:1px}
-.toast.ok .i{color:#7ED49E}.toast.err .i{color:#F49A9A}.toast.info .i{color:#9CC5F2}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}}
 
 @media (max-width:640px){
@@ -433,3 +439,34 @@ mark{background:var(--gold-soft);color:inherit;border-radius:3px;padding:0 1px}
 .intro p{margin:10px 0 0}
 #pB:has(#batchIntro:not([open])) #batchList{max-height:calc(420px + var(--intro,0px))}
 .intro.measure>summary::after{transition:none}
+
+/* SweetAlert2 aux couleurs de Bifröst (sweetalert2.min.css chargé avant). */
+.swal2-container.swal2-backdrop-show{background:rgba(15,26,43,.55)}
+.swal2-popup.bf-alert{width:min(440px,calc(100vw - 32px));border-radius:18px;background:var(--surface);color:var(--ink);font-family:var(--sans);padding:28px 24px 20px;box-shadow:0 24px 64px -16px rgba(15,26,43,.5)}
+.bf-alert .swal2-title{font-size:21px;font-weight:700;letter-spacing:-.01em;color:var(--ink);padding:0}
+.bf-alert .swal2-html-container{font-size:14px;color:var(--mut);margin:10px 0 0;padding:0}
+.bf-alert .swal2-footer{font-size:12.5px;color:var(--mut);border-top-color:var(--line);margin:16px 0 0;padding-top:12px}
+.bf-actions{gap:10px;margin-top:18px}
+.bf-actions button{height:44px;padding:0 18px}
+button.ghost-line{background:var(--surface);border-color:var(--line-strong)}
+.swal2-icon.swal2-warning{border-color:#E7C66A;color:var(--gold)}
+.swal2-icon.swal2-success{border-color:#9BD3B0}.swal2-icon.swal2-success [class^=swal2-success-line]{background:var(--ok)}.swal2-icon.swal2-success .swal2-success-ring{border-color:rgba(29,122,70,.3)}
+.swal2-icon.swal2-error{border-color:#EBA3A3;color:var(--err)}.swal2-icon.swal2-error [class^=swal2-x-mark-line]{background:var(--err)}
+.swal2-icon.swal2-info{border-color:#A9C6EC;color:var(--run)}
+.swal2-popup.bf-toast{background:var(--surface);color:var(--ink);font-family:var(--sans);border-radius:12px;box-shadow:var(--pop-shadow);padding:10px 14px}
+.bf-toast .swal2-title{font-size:13.5px;font-weight:500;color:var(--ink);margin:0 0 0 10px}
+.bf-toast .swal2-timer-progress-bar{background:var(--line-strong)}
+/* Sous le bandeau de nuit (56 px + le filet), pas par-dessus. */
+body.swal2-toast-shown .swal2-container.swal2-top-end{top:64px}
+@media (prefers-color-scheme:dark){.swal2-container.swal2-backdrop-show{background:rgba(0,0,0,.6)}}
+
+/* Popover natif des détails (#bfPop) : posé en JS sous son ancre. */
+.npop{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));padding:14px 16px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:var(--ink);box-shadow:var(--pop-shadow);font-size:13px}
+.npop:popover-open{display:flex;flex-direction:column;gap:10px}
+.npop b{font-weight:600;word-break:break-all}.npop p{color:var(--mut)}
+/* Ancres : une puce de facette, le détail d'une ligne du lot. */
+button.chip{height:auto;font-weight:400;cursor:pointer;font-size:12px;padding:3px 10px;border-radius:999px}
+button.chip:hover{border-color:var(--mut)}
+button.det-pop{all:unset;cursor:pointer;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;border-radius:4px}
+button.det-pop:hover{color:var(--ink);text-decoration:underline dotted;text-underline-offset:3px}
+button.det-pop:focus-visible{outline:2px solid var(--fjord);outline-offset:2px}
