@@ -8,7 +8,24 @@ const msg=(kind,text,extra='')=>`<div class="msg ${kind}">${ico(kind==='ok'?'che
 const st={step:1,max:1,mode:'dir',hash:null,clientList:[],sort:{k:'name',d:1},job:null,sel:null,picked:null,analysis:null,templates:[],images:[],captures:[],me:null,miErr:'',state:null,music:false,mbPicked:null,mbResults:[],typesTouched:false};
 
 // ---- retours à l'écran : toasts et boutons occupés ----
-function toast(text,kind='info'){const t=document.createElement('div');t.className='toast '+kind;t.innerHTML=ico(kind==='ok'?'check':kind==='err'?'x':'info')+'<span>'+esc(text)+'</span>';$('toasts').append(t);setTimeout(()=>t.remove(),kind==='err'?8000:4000)}
+// Toasts SweetAlert2 en haut à droite ; une erreur reste plus longtemps. titleText : du texte, jamais du HTML.
+const Toast=Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timerProgressBar:true,customClass:{popup:'bf-toast'}});
+function toast(text,kind='info'){Toast.fire({icon:{ok:'success',err:'error',warn:'warning'}[kind]||'info',titleText:text,timer:kind==='err'?8000:4000})}
+// Alertes SweetAlert2 : nos boutons (primary), pas les siens ; Annuler à gauche.
+const Alert=Swal.mixin({buttonsStyling:false,reverseButtons:true,focusCancel:true,customClass:{popup:'bf-alert',actions:'bf-actions',confirmButton:'primary',cancelButton:'ghost-line'}});
+// Popovers natifs (attribut popover, light dismiss et Échap par le navigateur), placés en JS sous leur
+// ancre, au-dessus si la place manque. Le clic qui en ferme un sur sa propre ancre ne le rouvre pas.
+function popToggle(p,a,fill){if(p.matches(':popover-open')){p.hidePopover();return false}
+  if(p._shut?.a===a&&performance.now()-p._shut.t<300)return false;
+  fill();p._a=a;p.showPopover();
+  // Sur téléphone, les détails sont une feuille du bas : la CSS la place, pas l'ancre.
+  if(p.classList.contains('npop')&&matchMedia('(max-width:760px)').matches){p.style.left=p.style.top='';return true}
+  const r=a.getBoundingClientRect(),w=p.offsetWidth,h=p.offsetHeight;
+  p.style.left=Math.max(8,Math.min(r.left,innerWidth-w-8))+'px';p.style.top=(r.bottom+8+h<=innerHeight?r.bottom+8:Math.max(8,r.top-8-h))+'px';return true}
+document.querySelectorAll('[popover]').forEach(p=>p.addEventListener('toggle',e=>{if(e.newState==='closed')p._shut={a:p._a,t:performance.now()}}));
+addEventListener('resize',()=>document.querySelectorAll('[popover]:popover-open').forEach(p=>p.hidePopover()));
+// Le popover partagé des détails (#bfPop) : un titre, un texte, parfois une action.
+const infoPop=(a,html)=>popToggle($('bfPop'),a,()=>{$('bfPop').innerHTML=html});
 // run : désactive le bouton le temps de la requête ; l'erreur part en toast.
 async function run(btn,fn){if(btn.disabled)return;btn.disabled=true;btn.classList.add('busy');try{return await fn()}catch(e){toast(e.message,'err')}finally{btn.disabled=false;btn.classList.remove('busy')}}
 const onSubmit=(form,fn)=>form.addEventListener('submit',e=>{e.preventDefault();fn()});
@@ -54,13 +71,13 @@ async function load(){const s=await api('GET','/ui/state');st.state=s;const c=s.
   $('ssh_host').value=c.ssh?.host||'';$('ssh_port').value=c.ssh?.port||22;$('ssh_user').value=c.ssh?.user||'';$('ssh_key').value=c.ssh?.key_path||'';$('ssh_dir').value=c.ssh?.data_dir||'';
   if(!s.has_token){$('connect').hidden=false;$('acctStatus').textContent='Pas encore connecté.';$('token').focus();return}
   // Jeton enregistré : jamais redemandé, on arrive directement sur les fichiers.
-  $('app').hidden=false;go(1);$('who').hidden=false;$('me').textContent='connexion…';
+  $('app').hidden=false;$('views').hidden=false;go(1);$('who').hidden=false;$('me').textContent='connexion…';
   if(s.connected)await connected(s.me);else{try{await connect(true)}catch(e){offline(e.message)}}}
 
 function offline(m){$('offline').hidden=false;$('offlineMsg').textContent=m+' — le jeton enregistré n\'a pas été redemandé.';$('me').textContent='hors ligne';$('acctStatus').className='status err';$('acctStatus').innerHTML=ico('cloud-off')+'<span>'+esc(m)+'</span>'}
 $('retry').onclick=()=>run($('retry'),async()=>{try{await connect(true);$('offline').hidden=true}catch(e){offline(e.message)}});
 $('relog').onclick=()=>{drawer.showModal();$('token2').focus()};
-async function connected(me){st.me=me;$('app').hidden=false;$('connect').hidden=true;$('who').hidden=false;
+async function connected(me){st.me=me;$('app').hidden=false;$('views').hidden=false;$('connect').hidden=true;$('who').hidden=false;
   $('me').textContent=me.name+' · '+me.class+' · ratio '+(me.ratio??'∞');
   $('acctStatus').className='status ok';$('acctStatus').innerHTML=ico('check')+'<span>Connecté : <b>'+esc(me.name)+'</b> · '+esc(me.class)+' · ratio '+esc(me.ratio??'∞')+'</span>';
   $('offline').hidden=true;await cats();if(st.mode==='client'&&st.clientList.length)renderClient();else browse('').catch(e=>listEmpty('alert',e.message))}
@@ -149,6 +166,9 @@ async function cats(){const r=await api('GET','/ui/categories');const all=(r.cat
     return `<optgroup label="${esc(root?.name||f)}">${(root?[root]:[]).concat(subs).map(c=>`<option value="${esc(c.slug)}">${esc(c.name)}${c.slug===f&&subs.length?' (toute la famille)':''}</option>`).join('')}</optgroup>`}).join('');
   const film=all.find(c=>c.slug==='films-film');if(film)$('category').value=film.slug}
 
+document.addEventListener('click',e=>{const c=e.target.closest('button.chip[data-o]');if(!c)return;
+  infoPop(c,`<b>${esc(c.dataset.k)} · <span class="mono">${esc(c.textContent)}</span></b><p>${esc(ORIGIN[c.dataset.o]||'Origine inconnue.')}</p>`)});
+
 // ---- préparation : hachage → mediainfo → analyse ----
 function stage(step,err){const order=['hachage','mediainfo','analyse'];const i=order.indexOf(step);
   [...$('prep').querySelectorAll('.stages span')].forEach((s,k)=>{s.className=err&&k===i?'err':step==='prêt'||k<i?'done':k===i?'on':''});
@@ -172,7 +192,10 @@ function poll(){return waitJob(st.job,j=>{const[d,t]=j.progress;$('prog').style.
 // ---- étape 2 : œuvre et fiche ----
 // Fiche partagée avec la loupe du lot : puces (lu / déclaré) et champs des facettes.
 const FACET_LAB={source:'Source',edition:'Édition',group:'Team',languages:'Langues',resolution:'Résolution',video_codec:'Codec vidéo',bit_depth:'Profondeur',hdr:'HDR',audio_codec:'Codec audio',channels:'Canaux'};
-const facetChips=n=>Object.entries(n.facets||{}).map(([k,v])=>`<span class="chip ${v.origin}" title="${esc(FACET_LAB[k]||k)}">${esc(v.value)}</span>`).join('')+(n.media?Object.values(n.media).filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join(''):'');
+// D'où vient une facette (origin de Draupnirr) : dit dans le popover de sa puce.
+const ORIGIN={probed:'Sondée : lue par MediaInfo dans les pistes.',declared:'Déclarée : vient du nom ou de ta saisie ; aucune sonde ne peut l\'établir.',unverifiable:'Lue dans le nom : la sonde ne peut ni la confirmer ni la contredire.',
+  contradicted:'Contredite : MediaInfo dit autre chose que le nom, et c\'est la sonde qui gagne.',refined:'Précisée par la sonde.',declared_refined:'Déclarée, puis précisée par la sonde.'};
+const facetChips=n=>Object.entries(n.facets||{}).map(([k,v])=>`<button type="button" class="chip ${v.origin}" data-k="${esc(FACET_LAB[k]||k)}" data-o="${esc(v.origin||'')}" aria-haspopup="dialog">${esc(v.value)}</button>`).join('')+(n.media?Object.values(n.media).filter(Boolean).map(v=>`<span class="chip">${esc(v)}</span>`).join(''):'');
 // vals : valeurs imposées (sinon celles de l'analyse). Liste fermée → select, sinon champ libre.
 function facetGrid(n,keys,vals={}){const voc=n.vocabulary||{};return keys.map(k=>{const v=vals[k]??n.facets?.[k]?.value??'',lab=esc(FACET_LAB[k]||k),list=voc[k]||(k==='source'||k==='edition'?[]:null);
   return list?`<label>${lab}<select data-f="${esc(k)}"><option value="">—</option>${[...new Set([...list,...(v&&!list.includes(v)?[v]:[])])].map(t=>`<option ${v===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`:`<label>${lab}<input data-f="${esc(k)}" value="${esc(v)}"></label>`}).join('')}
@@ -301,19 +324,18 @@ function insert(text){wrap([text,''])}
 function cmd(k,arg){const d=TAGS[$('format').value][k];const sel=st.edSel;st.edSel=null;wrap(typeof d==='function'?d(arg):d,sel)}
 $('tb').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
   if(b.dataset.cmd){cmd(b.dataset.cmd);return}
-  st.edSel=[ta.selectionStart,ta.selectionEnd];pop(b.dataset.pop)});
+  st.edSel=[ta.selectionStart,ta.selectionEnd];pop(b.dataset.pop,b)});
 ta.addEventListener('keydown',e=>{if(!(e.metaKey||e.ctrlKey))return;const k={b:'b',i:'i',u:'u'}[e.key.toLowerCase()];if(k){e.preventDefault();cmd(k)}});
 const SWATCHES=['#E04848','#E8A33D','#3FAE5C','#3E8ED0','#9B6BD6','#8A94A6'];
-function pop(kind){const p=$('pop');if(p.dataset.kind===kind&&!p.hidden){closePop();return}p.dataset.kind=kind;p.hidden=false;
+function pop(kind,a){const p=$('pop');if(popToggle(p,a,()=>{p.dataset.kind=kind;
   if(kind==='color')p.innerHTML=SWATCHES.map(c=>`<button type="button" class="sw" data-v="${c}" style="background:${c}" title="${c}"></button>`).join('');
   else if(kind==='size')p.innerHTML=[['90','Petit'],['130','Grand'],['200','Très grand']].map(([v,l])=>`<button type="button" data-v="${v}">${l}</button>`).join('');
-  else{p.innerHTML=`<input type="url" placeholder="${kind==='img'?'https://…/image.jpg':'https://…'}" autocomplete="off"><button type="button" class="primary" data-ok="1">Insérer</button>`;p.querySelector('input').focus()}}
-function closePop(){$('pop').hidden=true;$('pop').dataset.kind=''}
+  else p.innerHTML=`<input type="url" placeholder="${kind==='img'?'https://…/image.jpg':'https://…'}" autocomplete="off"><button type="button" class="primary" data-ok="1">Insérer</button>`}))p.querySelector('input')?.focus()}
+function closePop(){$('pop').hidePopover()}
 $('pop').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const k=$('pop').dataset.kind;
   if(b.dataset.v){cmd(k,b.dataset.v);closePop();return}
   const u=$('pop').querySelector('input').value.trim();if(!u)return;cmd(k,u);closePop()});
-$('pop').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('pop').querySelector('[data-ok]')?.click()}if(e.key==='Escape')closePop()});
-document.addEventListener('click',e=>{if(!$('pop').hidden&&!e.target.closest('#pop')&&!e.target.closest('[data-pop]'))closePop()});
+$('pop').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('pop').querySelector('[data-ok]')?.click()}});
 // Palette de variables : la VALEUR rendue est insérée, le modèle reste sur le site.
 function fillVars(){const v=vars();$('varSel').innerHTML='<option value="">Insérer une variable…</option>'+Object.keys(v).map(k=>`<option value="${k}">${k} — ${esc(String(v[k]).replace(/\s+/g,' ').slice(0,40))||'(vide)'}</option>`).join('')}
 $('varSel').onchange=()=>{const k=$('varSel').value;if(k)insert(String(vars()[k]||''));$('varSel').value=''};
@@ -350,7 +372,8 @@ load().catch(e=>{$('connect').hidden=false;$('connectErr').textContent=e.message
 
 
 // ---- Vue Cross-seed ----
-function view(name){const cross=name==='cross',batch=name==='batch',up=!cross&&!batch;$('viewCross').classList.toggle('on',cross);$('viewBatch').classList.toggle('on',batch);$('viewUpload').classList.toggle('on',up);
+function view(name){const cross=name==='cross',batch=name==='batch',up=!cross&&!batch;
+  [['viewUpload',up],['viewCross',cross],['viewBatch',batch]].forEach(([id,on])=>{$(id).classList.toggle('on',on);on?$(id).setAttribute('aria-current','page'):$(id).removeAttribute('aria-current')});
   document.querySelector('.bridge').hidden=!up;[1,2,3,4].forEach(k=>$('p'+k).hidden=!up||k!==st.step);$('pX').hidden=!cross;$('pB').hidden=!batch;if(batch)batchInit();scrollTop()}
 $('viewUpload').onclick=()=>view('upload');$('viewCross').onclick=()=>view('cross');$('viewBatch').onclick=()=>view('batch');
 st.cross=[];
@@ -460,10 +483,13 @@ function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),d
     sorted.map(r=>{const sub=bSub(r),lock=bPub(r);return `<div class="b ${r.pick&&!r.on&&!lock?'off':''} ${r.pick&&!running&&!lock?'pk':''}" data-p="${esc(r.path)}">${lock?`<span class="lock" title="Publié : ni republié ni resimulé">${ico('check')}</span>`:r.pick?`<input type="checkbox" ${r.on?'checked':''} ${running?'disabled':''} aria-label="Inclure ${esc(r.name)}">`:'<span></span>'}`+
       `<span class="nm" title="${esc(r.path)}"><b>${ico(r.is_dir===false?'file':'folder')}<span class="t">${bHl(r.name)}</span></b>${sub?`<small>${ico('st-built')}<span class="t">${bHl(sub)}</span></small>`:''}</span><span class="r">${human(r.size)}</span>`+
       (all?`<span class="st">${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'<span class="mut dash">—</span>'}</span>`:'')+
-      `<span class="det">${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.detail||r.url)}</a>`:esc(r.detail||'')||'<span class="mut">pas encore examinée</span>'}</span><button type="button" class="zoom" title="Détails${[BS.rev,BS.sim,BS.rv,''].includes(r.status||'')?' et choix de l\'œuvre':''}" aria-label="Détails de ${esc(r.name)}">${ico('search')}</button></div>`}).join('');
+      `<span class="det">${r.url?`<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.detail||r.url)}</a>`:r.detail?`<button type="button" class="det-pop" aria-haspopup="dialog">${esc(r.detail)}</button>`:'<span class="mut">pas encore examinée</span>'}</span><button type="button" class="zoom" title="Détails${[BS.rev,BS.sim,BS.rv,''].includes(r.status||'')?' et choix de l\'œuvre':''}" aria-label="Détails de ${esc(r.name)}">${ico('search')}</button></div>`}).join('');
   const m=$('batchMaster');if(m){m.checked=on===sel.length;m.indeterminate=on>0&&on<sel.length;m.onchange=()=>{sel.forEach(r=>m.checked?p.on.add(r.path):p.on.delete(r.path));renderBatchTable()}}
   $('batchList').querySelectorAll('.b[data-p]').forEach(row=>{const c=row.querySelector('input[type=checkbox]'),path=row.dataset.p;
     row.querySelector('.zoom').onclick=()=>bqOpen(st.batchVis,path);
+    const dp=row.querySelector('.det-pop'),r=vis.find(x=>x.path===path);
+    if(dp)dp.onclick=()=>{infoPop(dp,`<b>${r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span> `:''}<span class="mono">${esc(r.name)}</span></b><p>${esc(r.detail)}</p><div class="row end"><button type="button" class="primary" id="popZoom">${ico('search')}Ouvrir la loupe</button></div>`);
+      $('popZoom').onclick=()=>{$('bfPop').hidePopover();bqOpen(st.batchVis,path)}};
     if(!c||!row.classList.contains('pk'))return;
     c.onchange=()=>{c.checked?p.on.add(path):p.on.delete(path);renderBatchTable()};
     // Toute la ligne coche ou décoche, sauf un clic sur la case, un lien ou la loupe.
@@ -483,7 +509,7 @@ async function batchPoll(){clearTimeout(st.batchTimer);try{const j=await api('GE
   renderBatch(j);if(j.running)st.batchTimer=setTimeout(batchPoll,2000)}catch(e){}}
 $('batchStart').onclick=()=>run($('batchStart'),async()=>{const dry=$('batchDry').checked,include=batchIncluded();
   if(include&&!include.length)return toast('Rien de coché ici : rien à traiter.','warn');
-  if(!dry&&!confirm(`Publier pour de vrai ${include?include.length+' release(s)':'tout le dossier'} ? Seul ce qui est sûr part ; le reste reste « à revoir ».`))return;
+  if(!dry&&!(await Alert.fire({icon:'warning',titleText:`Publier ${include?include.length+' release(s)':'tout le dossier'} ?`,text:'Seul ce qui est sûr part ; le reste reste « à revoir » et t\'attend dans l\'onglet.',footer:'10 publications par minute au plus.',showCancelButton:true,confirmButtonText:'Oui, publier',cancelButtonText:'Annuler'})).isConfirmed)return;
   await api('POST','/ui/batch/start',{path:$('batchPath').value.trim(),dry_run:dry,max:+$('batchMax').value||0,limit:+$('batchLimit').value||0,max_size:Math.round((+$('batchMaxSize').value||0)*1024**3),only_video:st.batchKind==='video',music:st.batchKind==='music',music_source:$('batchSrc').value,category_film:$('batchCatFilm').value,category_tv:$('batchCatTV').value,include});
   toast(dry?'Simulation lancée':'Lot lancé','ok');st.batchTab=BS.wait;st.batchOffSet=null;await batchPoll();await batchPickLoad().catch(()=>{})});
 // Contenu : vidéos seulement, musique (un album = une release) ou tout. Les catégories film/série ne servent pas aux albums.

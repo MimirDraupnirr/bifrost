@@ -6,6 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <link rel="icon" type="image/svg+xml" href="./logo.svg">
 <title>Bifröst</title>
+<link rel="stylesheet" href="./vendor/sweetalert2.min.css">
 <link rel="stylesheet" href="./app.css">
 </head>
 <body>
@@ -74,6 +75,11 @@
     <svg class="mark" viewBox="0 0 256 256" aria-hidden="true"><defs><linearGradient id="g-sky" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1C2748"/><stop offset="1" stop-color="#0C1222"/></linearGradient><clipPath id="c-badge"><rect width="256" height="256" rx="58"/></clipPath></defs><rect width="256" height="256" rx="58" fill="url(#g-sky)"/><g clip-path="url(#c-badge)"><g fill="none" stroke-width="14" stroke-linecap="round"><path d="M-8 228 A160 160 0 0 1 152 68" stroke="#E5484D"/><path d="M8 228 A144 144 0 0 1 152 84" stroke="#F2803D"/><path d="M24 228 A128 128 0 0 1 152 100" stroke="#F5C04A"/><path d="M40 228 A112 112 0 0 1 152 116" stroke="#36C7B7"/><path d="M56 228 A96 96 0 0 1 152 132" stroke="#4F8BFF"/></g><rect x="0" y="228" width="256" height="28" fill="#0A0F1D"/><circle cx="186" cy="100" r="30" fill="none" stroke="#F5C04A" stroke-width="13"/></g></svg>
     <span class="name">Bifröst</span><span class="ver" id="version"></span>
   </a>
+  <nav class="views" id="views" aria-label="Vue" hidden>
+    <button type="button" class="on" id="viewUpload" aria-current="page"><svg class="i"><use href="#i-upload"/></svg><span>Uploader</span></button>
+    <button type="button" id="viewCross"><svg class="i"><use href="#i-link"/></svg><span>Cross-seed</span></button>
+    <button type="button" id="viewBatch"><svg class="i"><use href="#i-folder"/></svg><span>Lot</span></button>
+  </nav>
   <div class="who" id="who" hidden><svg class="i"><use href="#i-user"/></svg><span id="me"></span></div>
   <button class="ghost" id="gear" type="button"><svg class="i"><use href="#i-sliders"/></svg><span>Réglages</span></button>
 </header>
@@ -119,11 +125,6 @@
   </section>
 
   <div id="app" hidden>
-    <div class="views"><div class="seg" role="tablist" aria-label="Vue">
-      <button type="button" class="on" id="viewUpload" role="tab"><svg class="i"><use href="#i-upload"/></svg>Uploader</button>
-      <button type="button" id="viewCross" role="tab"><svg class="i"><use href="#i-link"/></svg>Cross-seed</button>
-      <button type="button" id="viewBatch" role="tab"><svg class="i"><use href="#i-folder"/></svg>Lot</button>
-    </div></div>
     <nav class="bridge" aria-label="Étapes">
       <div class="span"><div class="fill" id="railFill"></div></div>
       <ol id="rail">
@@ -264,7 +265,7 @@
             <button type="button" data-pop="img" title="Image par URL"><svg class="i"><use href="#i-image"/></svg></button>
             <select id="varSel" title="Insérer la valeur d'une variable du modèle"><option value="">Insérer une variable…</option></select>
           </div>
-          <div class="pop" id="pop" hidden></div>
+          <div class="pop" id="pop" popover></div>
           <textarea id="description" spellcheck="false" placeholder="Décris la release : qualité, sources, captures… La barre d'outils insère les balises autour de la sélection."></textarea>
         </div>
         <div class="pv">
@@ -445,7 +446,8 @@
   </div>
 </dialog>
 
-<div id="toasts" aria-live="polite"></div>
+<div id="bfPop" class="npop" popover role="dialog" aria-label="Détails"></div>
+<script src="./vendor/sweetalert2.min.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>
