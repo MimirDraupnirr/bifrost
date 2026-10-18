@@ -17,7 +17,10 @@ const Alert=Swal.mixin({buttonsStyling:false,reverseButtons:true,focusCancel:tru
 // ancre, au-dessus si la place manque. Le clic qui en ferme un sur sa propre ancre ne le rouvre pas.
 function popToggle(p,a,fill){if(p.matches(':popover-open')){p.hidePopover();return false}
   if(p._shut?.a===a&&performance.now()-p._shut.t<300)return false;
-  fill();p._a=a;p.showPopover();const r=a.getBoundingClientRect(),w=p.offsetWidth,h=p.offsetHeight;
+  fill();p._a=a;p.showPopover();
+  // Sur téléphone, les détails sont une feuille du bas : la CSS la place, pas l'ancre.
+  if(p.classList.contains('npop')&&matchMedia('(max-width:760px)').matches){p.style.left=p.style.top='';return true}
+  const r=a.getBoundingClientRect(),w=p.offsetWidth,h=p.offsetHeight;
   p.style.left=Math.max(8,Math.min(r.left,innerWidth-w-8))+'px';p.style.top=(r.bottom+8+h<=innerHeight?r.bottom+8:Math.max(8,r.top-8-h))+'px';return true}
 document.querySelectorAll('[popover]').forEach(p=>p.addEventListener('toggle',e=>{if(e.newState==='closed')p._shut={a:p._a,t:performance.now()}}));
 addEventListener('resize',()=>document.querySelectorAll('[popover]:popover-open').forEach(p=>p.hidePopover()));
@@ -68,13 +71,13 @@ async function load(){const s=await api('GET','/ui/state');st.state=s;const c=s.
   $('ssh_host').value=c.ssh?.host||'';$('ssh_port').value=c.ssh?.port||22;$('ssh_user').value=c.ssh?.user||'';$('ssh_key').value=c.ssh?.key_path||'';$('ssh_dir').value=c.ssh?.data_dir||'';
   if(!s.has_token){$('connect').hidden=false;$('acctStatus').textContent='Pas encore connecté.';$('token').focus();return}
   // Jeton enregistré : jamais redemandé, on arrive directement sur les fichiers.
-  $('app').hidden=false;go(1);$('who').hidden=false;$('me').textContent='connexion…';
+  $('app').hidden=false;$('views').hidden=false;go(1);$('who').hidden=false;$('me').textContent='connexion…';
   if(s.connected)await connected(s.me);else{try{await connect(true)}catch(e){offline(e.message)}}}
 
 function offline(m){$('offline').hidden=false;$('offlineMsg').textContent=m+' — le jeton enregistré n\'a pas été redemandé.';$('me').textContent='hors ligne';$('acctStatus').className='status err';$('acctStatus').innerHTML=ico('cloud-off')+'<span>'+esc(m)+'</span>'}
 $('retry').onclick=()=>run($('retry'),async()=>{try{await connect(true);$('offline').hidden=true}catch(e){offline(e.message)}});
 $('relog').onclick=()=>{drawer.showModal();$('token2').focus()};
-async function connected(me){st.me=me;$('app').hidden=false;$('connect').hidden=true;$('who').hidden=false;
+async function connected(me){st.me=me;$('app').hidden=false;$('views').hidden=false;$('connect').hidden=true;$('who').hidden=false;
   $('me').textContent=me.name+' · '+me.class+' · ratio '+(me.ratio??'∞');
   $('acctStatus').className='status ok';$('acctStatus').innerHTML=ico('check')+'<span>Connecté : <b>'+esc(me.name)+'</b> · '+esc(me.class)+' · ratio '+esc(me.ratio??'∞')+'</span>';
   $('offline').hidden=true;await cats();if(st.mode==='client'&&st.clientList.length)renderClient();else browse('').catch(e=>listEmpty('alert',e.message))}
@@ -369,7 +372,8 @@ load().catch(e=>{$('connect').hidden=false;$('connectErr').textContent=e.message
 
 
 // ---- Vue Cross-seed ----
-function view(name){const cross=name==='cross',batch=name==='batch',up=!cross&&!batch;$('viewCross').classList.toggle('on',cross);$('viewBatch').classList.toggle('on',batch);$('viewUpload').classList.toggle('on',up);
+function view(name){const cross=name==='cross',batch=name==='batch',up=!cross&&!batch;
+  [['viewUpload',up],['viewCross',cross],['viewBatch',batch]].forEach(([id,on])=>{$(id).classList.toggle('on',on);on?$(id).setAttribute('aria-current','page'):$(id).removeAttribute('aria-current')});
   document.querySelector('.bridge').hidden=!up;[1,2,3,4].forEach(k=>$('p'+k).hidden=!up||k!==st.step);$('pX').hidden=!cross;$('pB').hidden=!batch;if(batch)batchInit();scrollTop()}
 $('viewUpload').onclick=()=>view('upload');$('viewCross').onclick=()=>view('cross');$('viewBatch').onclick=()=>view('batch');
 st.cross=[];
