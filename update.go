@@ -87,7 +87,29 @@ func assetName(version string) string {
 }
 
 // checkUpdate interroge GitHub ; nil si rien de plus récent.
-func checkUpdate(ctx context.Context) (*release, error) {
+// ghRelease : la dernière release publiée, telle que l'API GitHub la décrit.
+type ghRelease struct {
+	TagName    string `json:"tag_name"`
+	Body       string `json:"body"`
+	HTMLURL    string `json:"html_url"`
+	Prerelease bool   `json:"prerelease"`
+	Assets     []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+// asset : l'URL de téléchargement d'un fichier de la release, "" s'il n'y est pas.
+func (r *ghRelease) asset(name string) string {
+	for _, a := range r.Assets {
+		if a.Name == name {
+			return a.URL
+		}
+	}
+	return ""
+}
+
+func latestRelease(ctx context.Context) (*ghRelease, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/"+releaseRepo+"/releases/latest", nil)
@@ -101,35 +123,23 @@ func checkUpdate(ctx context.Context) (*release, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub : HTTP %d", res.StatusCode)
 	}
-	var gh struct {
-		TagName    string `json:"tag_name"`
-		Body       string `json:"body"`
-		HTMLURL    string `json:"html_url"`
-		Prerelease bool   `json:"prerelease"`
-		Assets     []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
+	var gh ghRelease
 	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&gh); err != nil {
+		return nil, err
+	}
+	return &gh, nil
+}
+
+func checkUpdate(ctx context.Context) (*release, error) {
+	gh, err := latestRelease(ctx)
+	if err != nil {
 		return nil, err
 	}
 	if gh.Prerelease || !semverLess(Version, gh.TagName) {
 		return nil, nil
 	}
-	rel := &release{Version: gh.TagName, Notes: firstLines(gh.Body, 5), URL: gh.HTMLURL}
-	want := assetName(gh.TagName)
-	for _, a := range gh.Assets {
-		switch a.Name {
-		case want:
-			rel.asset = a.URL
-		case "checksums.txt":
-			rel.sums = a.URL
-		case "checksums.txt.sig":
-			rel.sig = a.URL
-		}
-	}
-	return rel, nil
+	return &release{Version: gh.TagName, Notes: firstLines(gh.Body, 5), URL: gh.HTMLURL,
+		asset: gh.asset(assetName(gh.TagName)), sums: gh.asset("checksums.txt"), sig: gh.asset("checksums.txt.sig")}, nil
 }
 
 func firstLines(s string, n int) string {

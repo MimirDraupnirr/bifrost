@@ -21,6 +21,8 @@ import (
 // Version est posée par goreleaser (-X main.Version=…) ; « dev » en local.
 var Version = "dev"
 
+const defaultListen = "127.0.0.1:8790"
+
 // managed : lancé par l'application de bureau (desktop/), qui lit les lignes BIFROST_* de stdout.
 var managed bool
 
@@ -36,7 +38,7 @@ func main() {
 		os.Exit(agent(os.Args[2:]))
 	}
 
-	listen := flag.String("listen", "127.0.0.1:8790", "adresse d'écoute de la page locale")
+	listen := flag.String("listen", defaultListen, "adresse d'écoute de la page locale")
 	configPath := flag.String("config", defaultConfigPath(), "fichier de configuration")
 	noBrowser := flag.Bool("no-browser", false, "ne pas ouvrir le navigateur")
 	showVersion := flag.Bool("version", false, "afficher la version")
@@ -64,6 +66,15 @@ func main() {
 			if err := applyUpdate(context.Background(), rel); err != nil {
 				fmt.Fprintln(os.Stderr, "mise à jour refusée :", err)
 			}
+		}
+	}
+
+	// Binaire seul lancé à la main, usage local : l'application de bureau prend le
+	// relais (installée au besoin). Pas en Docker, ni écoute réseau, ni --no-browser :
+	// ceux-là tournent sans écran ou sont configurés exprès.
+	if cfg.autoUpdate() && !inDocker() && !managed && Version != "dev" && !*noBrowser && *listen == defaultListen && desktopSupported() {
+		if toDesktop(context.Background()) {
+			return
 		}
 	}
 
