@@ -192,7 +192,9 @@ function showAnalysis(a){const n=a.nomenclature;
   advCatFill()}
 // Sous-catégories de la famille du type TMDB (film ou série), comme dans la loupe ; la catégorie
 // hors de cette famille, elle passe à celle du lot pour ce type (Série TV, Film), ou à la première sous-catégorie.
-function advCatFill(){const s=$('advCat');if(!s)return;const k=$('kind').value,def=bdCat(k)||(k===TK.tv?'series':'films');s.innerHTML=catFamily(def);
+// bdCat retombe sur Série TV / Film tant que la vue Lot n'a pas rempli ses sélecteurs : sinon la
+// première sous-catégorie de Séries, l'image disque ISO, l'emportait.
+function advCatFill(){const s=$('advCat');if(!s)return;const k=$('kind').value,def=bdCat(k);s.innerHTML=catFamily(def);
   const opts=[...s.options].map(o=>o.value),v=$('category').value;
   if(opts.includes(v)){s.value=v;return}
   const nv=opts.includes(def)&&def.includes('-')?def:opts.find(o=>o.includes('-'))||opts[0];if(!nv)return;
@@ -564,7 +566,7 @@ function batchGroupOpen(paths){const rows=batchRows().rows,g=paths.map(p=>rows.f
   batchDlg();bdShow();batchSearch()}
 const batchCanChoose=r=>!st.batchJob?.running&&[BS.rev,BS.sim,BS.rv,BS.err,BS.ign,''].includes(r.status||'');
 // Le type suit l'œuvre choisie (le sélecteur de recherche peut basculer sans rien choisir).
-const bdKindOf=d=>d.pick?.choice.tmdb_type||d.kind,bdCat=k=>$(k===TK.tv?'batchCatTV':'batchCatFilm').value,bdCatOf=d=>d.cat||bdCat(bdKindOf(d));
+const bdKindOf=d=>d.pick?.choice.tmdb_type||d.kind,bdCat=k=>$(k===TK.tv?'batchCatTV':'batchCatFilm').value||(k===TK.tv?'series-serie-tv':'films-film'),bdCatOf=d=>d.cat||bdCat(bdKindOf(d));
 // Sous-catégories proposées : la famille (groupe de l'onglet Upload) de la catégorie du lot pour ce type.
 const catFamily=v=>{const g=$('category').querySelector(`option[value="${CSS.escape(v)}"]`)?.parentElement;return g&&g.tagName==='OPTGROUP'?g.innerHTML:$('category').innerHTML};
 const bdCatOpts=d=>catFamily(bdCat(bdKindOf(d)));
