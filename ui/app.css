@@ -374,6 +374,8 @@ mark{background:var(--gold-soft);color:inherit;border-radius:3px;padding:0 1px}
 .bdlg>header .nm small{display:block;color:var(--mut);font-size:12px;word-break:break-all}
 .bdlg>header button{height:32px;width:32px;padding:0;flex:none}
 .bdlg .body{overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+/* Les blocs ne rétrécissent pas : un .also (overflow:hidden) se faisait écraser et couper au lieu de laisser défiler le corps. */
+.bdlg .body>*{flex-shrink:0}
 .bdlg>footer{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 18px;border-top:1px solid var(--line)}
 .kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;font-size:13px;margin:0}
 .kv dt{color:var(--mut)}.kv dd{margin:0;min-width:0;word-break:break-word}

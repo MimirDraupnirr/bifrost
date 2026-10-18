@@ -110,6 +110,7 @@ type analysis struct {
 	Year         any           `json:"year"`
 	GuessedType  string        `json:"guessed_type"`
 	Warnings     []string      `json:"warnings"`
+	Duplicate    bool          `json:"duplicate"`
 	Executable   bool          `json:"executable"`
 	SizeHuman    string        `json:"size_human"`
 	FileCount    int           `json:"file_count"`
@@ -198,6 +199,10 @@ func pickWork(a *analysis, results []tmdbResult) (*tmdbResult, string) {
 	}
 	return nil, "aucune œuvre TMDB avec le même titre et la même année"
 }
+
+// dupDetail : même infohash déjà en base, mais absent de la recherche par taille
+// (qui ne voit que les releases validées) — un upload en attente de validation.
+const dupDetail = "même infohash déjà sur Draupnirr (en attente de validation ?)"
 
 // analysisBlocker : ce qui envoie en revue quelle que soit la famille —
 // analyse refusée, doublon, exécutable, réserve de Ratatosk (sauf `ignore`).
@@ -433,6 +438,8 @@ func (s *server) runBatch(ctx context.Context, j *batchJob) {
 			j.Review++
 		case stReviewed:
 			j.Reviewed++
+		case stPresent:
+			j.Skipped++
 		}
 		r.Status, r.Detail = status, detail
 		e := rowEvent(j, r)
@@ -642,6 +649,9 @@ func (s *server) batchOne(ctx context.Context, c *Client, src fileSource, j *bat
 	var a analysis
 	if err := analyzeInto(ctx, c, raw, map[string][]string{"category": {j.catFilm}, "mediainfo": {mi}}, &a); err != nil {
 		return stError, err.Error()
+	}
+	if a.Duplicate {
+		return stPresent, dupDetail
 	}
 	kind := kindMovie
 	if tmdbKind(a.GuessedType) == kindTV {

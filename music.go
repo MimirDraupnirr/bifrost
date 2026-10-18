@@ -295,6 +295,9 @@ func (s *server) batchAlbum(ctx context.Context, c *Client, src fileSource, j *b
 	if err := analyzeInto(ctx, c, raw, fields, &a); err != nil {
 		return stError, err.Error()
 	}
+	if a.Duplicate {
+		return stPresent, dupDetail
+	}
 	m := a.Music
 	if m == nil || !m.Sheet {
 		_, why := decideMusic(&a)
