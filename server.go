@@ -1220,7 +1220,7 @@ func (s *server) batchListHandler(w http.ResponseWriter, r *http.Request) {
 		_ = saveConfig(s.configPath, s.cfg)
 	}
 	s.mu.Unlock()
-		// La dernière décision connue par entrée : la page l'affiche et décoche ce qui est déjà publié.
+	// La dernière décision connue par entrée : la page l'affiche et décoche ce qui est déjà publié.
 	type listed struct {
 		DirEntry
 		Last    *histEvent  `json:"last,omitempty"`

@@ -487,7 +487,7 @@ function renderBatchTable(){batchIntroFit();const {p,running,rows}=batchRows(),d
   $('batchRun').hidden=ro||!rq.length;$('batchRunLab').textContent=`Revoir à la suite (${rq.length})`;
   // Groupe : les releases cochées parmi celles affichées.
   // Le titre le plus fréquent parmi les cochées : un titre différent coché à côté n'entre pas dans le groupe.
-  const gt={};rq.filter(r=>r.on).forEach(r=>{const k=bdTitle(r.name);(gt[k]||=[]).push(r)});const gq=Object.values(gt).sort((a,b)=>b.length-a.length)[0]||[];st.batchGroupPaths=gq.map(r=>r.path);
+  const gt={};rq.filter(r=>r.on).forEach(r=>{const k=bdTitle(r.name);if(k)(gt[k]||=[]).push(r)});const gq=Object.values(gt).sort((a,b)=>b.length-a.length)[0]||[];st.batchGroupPaths=gq.map(r=>r.path);
   $('batchGroup').hidden=gq.length<2||st.batchKind==='music';const gn=gq[0]?bdGuess(gq[0].name):'';
   $('batchGroupLab').textContent=`Une œuvre pour ${gq.length} « ${gn.length>28?gn.slice(0,27)+'…':gn} »`;$('batchGroup').title=`Choisir une seule fois l'œuvre TMDB de ces ${gq.length} releases cochées du même titre ; chacune garde sa saison.`;
   $('batchList').classList.toggle('all',all);
@@ -564,7 +564,7 @@ function batchOpen(path){const r=batchRows().rows.find(x=>x.path===path);if(!r)r
   const music=st.batchKind==='music',[artist,album]=r.name.includes(' - ')?r.name.split(' - ',2):['',r.name],ch=r.choice?.ignored?null:r.choice;
   // Le choix déjà fait revient tel quel : œuvre, saison et facettes retouchées.
   const pick=ch?(ch.musicbrainz_id?{title:ch.title,year:ch.year,sub:ch.artist||'',img:'',choice:ch}:{title:ch.title,year:ch.year,sub:ch.tmdb_type===TK.tv?'Série':'Film',img:ch.poster_url,choice:ch}):null;
-  st.bd={r,music,pick,kind:ch?.tmdb_type||(r.episode?TK.tv:TK.movie),q:ch&&!music?ch.title:(!music&&r.tmdb?.replace(/\s*\(\d{4}\)$/,''))||bdGuess(r.name),artist:ch?.artist||artist.trim(),album:ch&&music?ch.title:bdGuess(album),results:[],
+  st.bd={r,music,pick,kind:ch?.tmdb_type||(r.episode?TK.tv:TK.movie),q:ch&&!music?ch.title:(!music&&r.tmdb?.replace(/\s*\(\d+\)$/,''))||bdGuess(r.name),artist:ch?.artist||artist.trim(),album:ch&&music?ch.title:bdGuess(album),results:[],
     fiche:null,facets:{...(ch?.facets||{})},episode:ch?.episode||'',cat:ch?.category||''};
   $('bdName').textContent=r.name;$('bdSub').textContent=`${human(r.size)} · ${r.path}`;
   $('bdBadge').innerHTML=r.status?`<span class="bdg ${bBadge(r.status)}">${esc(r.status)}</span>`:'';
