@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -20,6 +21,16 @@ import (
 // Version est posée par goreleaser (-X main.Version=…) ; « dev » en local.
 var Version = "dev"
 
+// managed : lancé par l'application de bureau (desktop/), qui lit les lignes BIFROST_* de stdout.
+var managed bool
+
+// signal : une ligne pour l'application de bureau, rien en dehors d'elle.
+func signal(line string) {
+	if managed {
+		fmt.Println(line)
+	}
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "agent" {
 		os.Exit(agent(os.Args[2:]))
@@ -29,6 +40,7 @@ func main() {
 	configPath := flag.String("config", defaultConfigPath(), "fichier de configuration")
 	noBrowser := flag.Bool("no-browser", false, "ne pas ouvrir le navigateur")
 	showVersion := flag.Bool("version", false, "afficher la version")
+	flag.BoolVar(&managed, "managed", false, "lancé par l'application de bureau : ni mise à jour ni navigateur, signaux sur stdout")
 	flag.Parse()
 
 	if *showVersion {
@@ -45,7 +57,8 @@ func main() {
 
 	// Mise à jour automatique AVANT de servir : rien ne tourne encore, c'est
 	// le seul moment où remplacer le binaire ne dérange personne.
-	if cfg.autoUpdate() && !inDocker() && Version != "dev" {
+	// L'application de bureau se met à jour elle-même, ce binaire compris.
+	if cfg.autoUpdate() && !inDocker() && !managed && Version != "dev" {
 		if rel, err := checkUpdate(context.Background()); err == nil && rel != nil {
 			fmt.Println("Mise à jour", Version, "→", rel.Version)
 			if err := applyUpdate(context.Background(), rel); err != nil {
@@ -55,6 +68,10 @@ func main() {
 	}
 
 	ln, err := net.Listen("tcp", *listen)
+	if err != nil && managed {
+		// Port pris (un Bifröst lancé à la main ?) : n'importe quel port libre, l'application suit.
+		ln, err = net.Listen("tcp", "127.0.0.1:0")
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "écoute impossible :", err)
 		os.Exit(1)
@@ -67,9 +84,18 @@ func main() {
 	if srv.requireAuth {
 		fmt.Println("Écoute hors loopback : mot de passe local exigé (défini au premier accès).")
 	}
-	if !*noBrowser {
+	if !*noBrowser && !managed {
 		go openBrowser(url)
 	}
+	if managed {
+		// L'application tient notre stdin : s'il se ferme, elle est morte (même tuée
+		// net, sans rien nous dire). Rester en vie ferait un serveur orphelin sur le port.
+		go func() {
+			_, _ = io.Copy(io.Discard, os.Stdin)
+			os.Exit(0)
+		}()
+	}
+	signal("BIFROST_READY " + url)
 	if err := http.Serve(ln, srv); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

@@ -70,7 +70,24 @@ En lot, l'option **Musique** fait de chaque dossier d'album une release, à tout
 
 ## Installer
 
-### Le binaire, sur ton ordinateur
+### L'application de bureau
+
+Sur la page [Releases](https://github.com/MimirDraupnirr/bifrost/releases/latest) : le `.dmg` pour macOS (`aarch64` Apple Silicon, `x64` Intel), le `-setup.exe` pour Windows (installation pour toi seul, sans droit administrateur), l'`.AppImage` ou le `.deb` pour Linux.
+
+Au lancement, une petite fenêtre cherche une mise à jour, la télécharge en montrant la progression, l'installe et redémarre ; puis Bifröst s'ouvre dans sa propre fenêtre, sans terminal ni navigateur. Les liens vers Draupnirr s'ouvrent, eux, dans ton navigateur.
+
+- **Fermer la fenêtre pendant un lot** la range dans la barre des tâches (la barre de menus sur macOS) : le lot continue, et l'application se ferme seule quand il est fini. Clic sur l'icône pour la rouvrir, *Quitter* pour tout arrêter.
+- **Hors lot**, fermer la fenêtre quitte Bifröst.
+- Un second lancement ramène la fenêtre déjà ouverte.
+
+Les installeurs ne sont pas encore signés par Apple ni par Microsoft. Au premier lancement :
+
+- **macOS** : si le système dit l'app « endommagée » ou « d'un développeur non identifié », lance une fois `xattr -dr com.apple.quarantine "/Applications/Bifröst.app"`, ou fais clic droit › *Ouvrir*.
+- **Windows** : SmartScreen › *Informations complémentaires* › *Exécuter quand même*.
+
+Les mises à jour suivantes, elles, sont vérifiées par une signature propre à Bifröst avant d'être installées.
+
+### Le binaire seul, sur ton ordinateur
 
 Télécharge le fichier de ta plateforme sur la page [Releases](https://github.com/MimirDraupnirr/bifrost/releases/latest) : macOS (Apple Silicon, Intel), Linux (amd64, arm64), Windows. Rends-le exécutable si besoin, lance-le : le navigateur s'ouvre sur `http://127.0.0.1:8790`. Aucun droit administrateur.
 
@@ -139,9 +156,13 @@ make build       # agents Linux (amd64, arm64) puis binaire du poste
 ./bifrost agent mediainfo /chemin/release/film.mkv        # ou un dossier d'album : un objet par piste
 ./bifrost agent albums /chemin/discographie              # les dossiers d'album que le lot musique publierait
 ./bifrost agent verify checksums.txt checksums.txt.sig   # une release est-elle signée par la clé de ce build ?
+
+make desktop     # l'application de bureau (Rust, Node et Tauri requis) : sidecar Go + paquet de la plateforme
 ```
 
-Go, bibliothèque standard et `x/crypto` seulement ; page en HTML, CSS et JavaScript natifs, embarquée dans le binaire. Une release = un tag `vX.Y.Z` : goreleaser publie les binaires et `checksums.txt`, le workflow signe `checksums.txt.sig`, et l'image multi-arch part sur ghcr.io.
+L'application de bureau (`desktop/`, Tauri) n'est qu'une coquille : écran de mise à jour, fenêtre, barre des tâches. Elle lance ce même serveur avec `--managed` (ni auto-update ni navigateur ; il annonce `BIFROST_READY <url>` et `BIFROST_BATCH 0|1` sur sa sortie) et affiche sa page. Toute la logique reste en Go.
+
+Go, bibliothèque standard et `x/crypto` seulement ; page en HTML, CSS et JavaScript natifs, embarquée dans le binaire. Une release = un tag `vX.Y.Z` : goreleaser publie les binaires et `checksums.txt`, le workflow signe `checksums.txt.sig`, et l'image multi-arch part sur ghcr.io, et les installeurs de l'application de bureau rejoignent la release avec leur `latest.json` (signé par la clé de l'updater Tauri, secret `TAURI_SIGNING_PRIVATE_KEY`).
 
 Conception, décisions et historique : `docs/23-BIFROST-OUTIL-UPLOAD-GO.md` du dépôt Draupnirr.
 

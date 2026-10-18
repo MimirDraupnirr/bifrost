@@ -62,3 +62,47 @@ jobs:
           build-args: VERSION=${{ github.ref_name }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+  # Application de bureau : installeurs + latest.json (mise à jour signée) ajoutés à la
+  # release que `binaries` vient de créer. Exige le secret TAURI_SIGNING_PRIVATE_KEY.
+  desktop:
+    needs: binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, triple: aarch64-apple-darwin, goos: darwin, goarch: arm64 }
+          - { os: macos-latest, triple: x86_64-apple-darwin, goos: darwin, goarch: amd64 }
+          - { os: windows-latest, triple: x86_64-pc-windows-msvc, goos: windows, goarch: amd64, exe: .exe }
+          - { os: ubuntu-22.04, triple: x86_64-unknown-linux-gnu, goos: linux, goarch: amd64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: stable, check-latest: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.triple }}" }
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      # Comme `make desktop-sidecar`, sans make (absent des runners Windows).
+      - name: Serveur Go en sidecar (agents Linux embarqués)
+        shell: bash
+        run: |
+          set -euo pipefail
+          L="-s -w -X main.Version=${GITHUB_REF_NAME}"
+          for a in amd64 arm64; do GOOS=linux GOARCH=$a CGO_ENABLED=0 go build -tags noagents -ldflags "$L" -o agent/bifrost-linux-$a .; done
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 go build -ldflags "$L" -o "desktop/src-tauri/binaries/bifrost-${{ matrix.triple }}${{ matrix.exe }}" .
+          # La version du tag, par un fichier : tauri-action découpe `args` et en ôte les guillemets.
+          printf '{"version":"%s"}' "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/version.json"
+      - run: npm ci
+        working-directory: desktop
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          args: --target ${{ matrix.triple }} --config ${{ runner.temp }}/version.json

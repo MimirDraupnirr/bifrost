@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "splash",
+  "description": "L'écran de lancement (page locale) : se déplacer et se fermer, rien d'autre. La fenêtre principale charge le serveur Go en http et n'a aucun accès à l'IPC.",
+  "windows": ["splash"],
+  "permissions": ["core:window:allow-start-dragging", "core:window:allow-close"]
+}

@@ -1,0 +1,3 @@
+# L'image ne contient que le serveur Go : ni l'application de bureau (target Rust, node_modules), ni git.
+desktop/
+.git/

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Bifröst">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1C2748"/>
+      <stop offset="1" stop-color="#0C1222"/>
+    </linearGradient>
+    <clipPath id="badge"><rect width="256" height="256" rx="58"/></clipPath>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#sky)"/>
+  <g clip-path="url(#badge)">
+    <g fill="#FFFFFF">
+      <circle cx="44" cy="52" r="2.4" opacity=".9"/><circle cx="92" cy="30" r="1.4" opacity=".7"/><circle cx="150" cy="44" r="1.8" opacity=".8"/>
+      <circle cx="30" cy="118" r="1.5" opacity=".6"/><circle cx="118" cy="86" r="1.3" opacity=".6"/><circle cx="66" cy="150" r="1.6" opacity=".55"/>
+    </g>
+    <!-- le pont : un quart d'arc qui monte du sol, à gauche, vers l'anneau -->
+    <g fill="none" stroke-width="12" stroke-linecap="round">
+      <path d="M-8 228 A160 160 0 0 1 152 68"  stroke="#E5484D"/>
+      <path d="M8 228 A144 144 0 0 1 152 84"   stroke="#F2803D"/>
+      <path d="M24 228 A128 128 0 0 1 152 100" stroke="#F5C04A"/>
+      <path d="M40 228 A112 112 0 0 1 152 116" stroke="#36C7B7"/>
+      <path d="M56 228 A96 96 0 0 1 152 132"   stroke="#4F8BFF"/>
+    </g>
+    <rect x="0" y="228" width="256" height="28" fill="#0A0F1D"/>
+    <!-- Draupnirr : l'anneau d'or où le pont aboutit -->
+    <circle cx="186" cy="100" r="30" fill="none" stroke="#F5C04A" stroke-width="11"/>
+    <circle cx="186" cy="100" r="30" fill="none" stroke="#FFE38A" stroke-width="3" opacity=".7"/>
+  </g>
+</svg>
