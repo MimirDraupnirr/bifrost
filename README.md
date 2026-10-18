@@ -87,6 +87,8 @@ Les installeurs ne sont pas encore signés par Apple ni par Microsoft. Au premie
 
 Les mises à jour suivantes, elles, sont vérifiées par une signature propre à Bifröst avant d'être installées.
 
+**Tu utilisais déjà le binaire seul ?** Rien à faire : sur Windows et macOS, en le relançant, il installe l'application (même release, même signature que ses mises à jour), l'ouvre et s'efface ; tes réglages et ton jeton sont repris. Si l'application est déjà là, il l'ouvre directement. Pour garder le binaire seul, coupe les mises à jour automatiques dans les Réglages, ou lance-le avec `--no-browser` ou un `--listen` à toi.
+
 ### Le binaire seul, sur ton ordinateur
 
 Télécharge le fichier de ta plateforme sur la page [Releases](https://github.com/MimirDraupnirr/bifrost/releases/latest) : macOS (Apple Silicon, Intel), Linux (amd64, arm64), Windows. Rends-le exécutable si besoin, lance-le : le navigateur s'ouvre sur `http://127.0.0.1:8790`. Aucun droit administrateur.

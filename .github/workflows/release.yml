@@ -107,3 +107,26 @@ jobs:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
           args: --target ${{ matrix.triple }} --config ${{ runner.temp }}/version.json
+  # Les installeurs de bureau, signés avec la clé ed25519 des binaires : c'est ce que
+  # vérifie un binaire seul avant d'installer l'application à sa place (desktop.go).
+  desktop-checksums:
+    needs: desktop
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: stable, check-latest: true }
+      - name: Signer desktop-checksums.txt
+        env:
+          BIFROST_SIGNING_KEY: ${{ secrets.BIFROST_SIGNING_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir d && cd d
+          gh release download "${GITHUB_REF_NAME}" -p '*-setup.exe' -p '*.app.tar.gz'
+          sha256sum * > ../desktop-checksums.txt
+          cd ..
+          go run -tags noagents . agent sign desktop-checksums.txt
+          gh release upload "${GITHUB_REF_NAME}" desktop-checksums.txt desktop-checksums.txt.sig --clobber
+
