@@ -103,21 +103,23 @@ type batchOpts struct {
 
 // analysis : la partie de la réponse de /api/upload/analyze que le lot lit.
 type analysis struct {
-	OK           bool          `json:"ok"`
-	Name         string        `json:"name"`
-	InfoHash     string        `json:"infohash"`
-	CleanTitle   string        `json:"clean_title"`
-	Year         any           `json:"year"`
-	GuessedType  string        `json:"guessed_type"`
-	Warnings     []string      `json:"warnings"`
-	Duplicate    bool          `json:"duplicate"`
-	Executable   bool          `json:"executable"`
-	SizeHuman    string        `json:"size_human"`
-	FileCount    int           `json:"file_count"`
-	Tags         []string      `json:"suggested_tags"`
-	Bot          []issue       `json:"bot"`
-	Nomenclature *nomenclature `json:"nomenclature"`
-	Music        *musicBlock   `json:"music"`
+	OK          bool     `json:"ok"`
+	Name        string   `json:"name"`
+	InfoHash    string   `json:"infohash"`
+	CleanTitle  string   `json:"clean_title"`
+	Year        any      `json:"year"`
+	GuessedType string   `json:"guessed_type"`
+	Warnings    []string `json:"warnings"`
+	Duplicate   bool     `json:"duplicate"`
+	// MediaInfo exigé par Draupnirr (films, séries) et absent : /api/upload refuserait.
+	MediaInfoMissing bool          `json:"mediainfo_missing"`
+	Executable       bool          `json:"executable"`
+	SizeHuman        string        `json:"size_human"`
+	FileCount        int           `json:"file_count"`
+	Tags             []string      `json:"suggested_tags"`
+	Bot              []issue       `json:"bot"`
+	Nomenclature     *nomenclature `json:"nomenclature"`
+	Music            *musicBlock   `json:"music"`
 }
 
 type facetValue struct {
@@ -213,6 +215,9 @@ func analysisBlocker(a *analysis, ignore ...string) (ok bool, reason string) {
 	}
 	for _, w := range a.Warnings {
 		return false, w // doublon d'infohash, private/source : Draupnirr a parlé
+	}
+	if a.MediaInfoMissing {
+		return false, "MediaInfo obligatoire pour les films et séries, et illisible ici : installe mediainfo ou publie à la main avec le rapport"
 	}
 	if a.Executable {
 		return false, "contenu exécutable : rapport VirusTotal à fournir à la main"

@@ -84,6 +84,13 @@ func TestDecideReadsRatatoskLevels(t *testing.T) {
 	}
 }
 
+func TestDecideStopsWithoutRequiredMediaInfo(t *testing.T) {
+	a := &analysis{OK: true, MediaInfoMissing: true, Nomenclature: &nomenclature{BuiltName: "X.2023.1080p.WEB.H264-GRP"}}
+	if ok, why := decide(a, &tmdbResult{ID: 1, Title: "X", Year: float64(2023)}, ""); ok || !contains(why, "MediaInfo obligatoire") {
+		t.Fatalf("sans le MediaInfo exigé, la release va en revue : %v %q", ok, why)
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (func() bool {
 		for i := 0; i+len(sub) <= len(s); i++ {

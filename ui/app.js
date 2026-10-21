@@ -202,7 +202,7 @@ function facetGrid(n,keys,vals={}){const voc=n.vocabulary||{};return keys.map(k=
 const advVals=()=>{const o={};$('advFacets').querySelectorAll('[data-f][data-t]').forEach(el=>{if(el.value)o[el.dataset.f]=el.value});return o};
 const facetVals=box=>{const o={};box.querySelectorAll('[data-f]').forEach(el=>{if(el.value)o[el.dataset.f]=el.value});return o};
 function showAnalysis(a){const n=a.nomenclature;
-  $('warnings').innerHTML=(st.miErr?msg('warn','MediaInfo : '+esc(st.miErr)+' — les facettes restent déclarées, Ratatosk les vérifiera.'):'')+(a.warnings||[]).map(w=>msg('warn',esc(w))).join('')+botMsgs(a)||msg('ok','Aucun avertissement : Ratatosk n\'a rien à redire.');
+  $('warnings').innerHTML=(a.mediainfo_missing?msg('err','MediaInfo obligatoire pour les films et les séries : Draupnirr refusera la publication sans lui.'+(st.miErr?' '+esc(st.miErr):'')):st.miErr?msg('warn','MediaInfo : '+esc(st.miErr)+' — les facettes restent déclarées, Ratatosk les vérifiera.'):'')+(a.warnings||[]).map(w=>msg('warn',esc(w))).join('')+botMsgs(a)||msg('ok','Aucun avertissement : Ratatosk n\'a rien à redire.');
   if(!n){$('built').textContent=a.name;$('chips').innerHTML='';$('legend').hidden=true;$('facets').innerHTML='';$('missing').textContent='';return}
   $('built').textContent=n.built_name||a.name;$('missing').textContent=n.missing?.length?'Manque : '+n.missing.join(', ')+(n.missing_title?' · titre de l\'œuvre':''):(n.missing_title?'Choisis l\'œuvre (titre)':'');
   $('chips').innerHTML=facetChips(n);$('legend').hidden=!$('chips').children.length;
